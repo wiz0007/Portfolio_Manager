@@ -1,0 +1,181 @@
+openapi: 3.0.3
+info:
+  title: Portfolio Manager API
+  version: 1.0.0
+  description: Financial intelligence and portfolio management platform API
+paths:
+  /api/v1/auth/csrf/:
+    get:
+      operationId: v1_auth_csrf_retrieve
+      description: Sets the CSRF cookie and returns the token for SPA state-changing
+        requests.
+      summary: Initialize CSRF Token
+      tags:
+      - Authentication
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: CSRF cookie initialized
+  /api/v1/auth/login/:
+    post:
+      operationId: v1_auth_login_create
+      description: Verifies credentials and establishes an authenticated session cookie.
+      summary: User Login
+      tags:
+      - Authentication
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Login'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Login'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Login'
+        required: true
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: Login successful
+        '400':
+          description: Invalid credentials or inactive account
+  /api/v1/auth/logout/:
+    post:
+      operationId: v1_auth_logout_create
+      description: Terminates the user session and flushes session cookies.
+      summary: User Logout
+      tags:
+      - Authentication
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: Successfully logged out
+  /api/v1/auth/me/:
+    get:
+      operationId: v1_auth_me_retrieve
+      description: Returns the profile information of the currently authenticated
+        user.
+      summary: Current User Profile
+      tags:
+      - Authentication
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+        '401':
+          description: Unauthenticated
+  /api/v1/auth/register/:
+    post:
+      operationId: v1_auth_register_create
+      description: Creates a new account and returns the created user profile.
+      summary: Register New User
+      tags:
+      - Authentication
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Register'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Register'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Register'
+        required: true
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: User successfully registered
+        '400':
+          description: Validation error
+components:
+  schemas:
+    Login:
+      type: object
+      description: Serializer for user login verification.
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          writeOnly: true
+      required:
+      - email
+      - password
+    Register:
+      type: object
+      description: Serializer for user registration with strict validation.
+      properties:
+        full_name:
+          type: string
+          maxLength: 255
+          minLength: 2
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          writeOnly: true
+        password_confirmation:
+          type: string
+          writeOnly: true
+      required:
+      - email
+      - full_name
+      - password
+      - password_confirmation
+    User:
+      type: object
+      description: Serializer for public user profile representation.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        full_name:
+          type: string
+          maxLength: 255
+        email:
+          type: string
+          format: email
+          readOnly: true
+          title: Email address
+        date_joined:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - date_joined
+      - email
+      - full_name
+      - id
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid

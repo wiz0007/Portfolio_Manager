@@ -1,34 +1,32 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { LoginPage } from '@/features/authentication/pages/LoginPage';
+import { RegisterPage } from '@/features/authentication/pages/RegisterPage';
+import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
+import { ProfilePage } from '@/features/settings/pages/ProfilePage';
+import { AccountPage } from '@/features/settings/pages/AccountPage';
+import { ProtectedRoute } from './layouts/ProtectedRoute';
+import { PublicOnlyRoute } from './layouts/PublicOnlyRoute';
 
 export const AppRouter: React.FC = () => {
   return (
     <Routes>
+      {/* Public routes (redirect to /dashboard if already logged in) */}
+      <Route element={<PublicOnlyRoute />}>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+      </Route>
+
+      {/* Protected routes (redirect to /login if unauthenticated) */}
+      <Route element={<ProtectedRoute />}>
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/settings/profile" element={<ProfilePage />} />
+        <Route path="/settings/account" element={<AccountPage />} />
+      </Route>
+
+      {/* Fallback & Root redirect */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route
-        path="/dashboard"
-        element={
-          <div className="flex min-h-screen items-center justify-center">
-            <h1 className="text-2xl font-bold">Portfolio Manager Dashboard (Ready for Sprint 1)</h1>
-          </div>
-        }
-      />
-      <Route
-        path="/login"
-        element={
-          <div className="flex min-h-screen items-center justify-center">
-            <h1 className="text-2xl font-bold">Login</h1>
-          </div>
-        }
-      />
-      <Route
-        path="/register"
-        element={
-          <div className="flex min-h-screen items-center justify-center">
-            <h1 className="text-2xl font-bold">Register</h1>
-          </div>
-        }
-      />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 };

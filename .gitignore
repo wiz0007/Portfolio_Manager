@@ -5,6 +5,9 @@ node_modules/
 dist/
 build/
 coverage/
+*.tsbuildinfo
+vite.config.d.ts
+vite.config.js
 
 # Python
 __pycache__/
@@ -58,3 +61,4 @@ Thumbs.db
 
 # Docker
 *.local
+

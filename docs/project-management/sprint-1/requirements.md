@@ -1,19 +1,29 @@
-# Sprint 1 Requirements: Project Foundation & Authentication
+# Sprint 1 — Engineering Requirements: Foundation & Authentication
 
-## Goal
-Establish the application foundation and allow a user to register, log in, and maintain a secure authenticated session.
+**Status:** Implementation Complete & Verified  
+**Version:** 1.0  
+**Phase:** Sprint 1
 
-## User Stories
-1. **User Registration:** As a prospective user, I want to create an account using my email and a strong password so that I can start tracking my portfolios.
-2. **User Login:** As an existing user, I want to securely log in so that I can access my private financial data.
-3. **Session Persistence:** As an authenticated user, my session should remain active across page reloads.
-4. **Current User Profile:** As an authenticated user, the application should fetch my account details via `/api/v1/auth/me/`.
-5. **User Logout:** As an authenticated user, I want to log out and invalidate my session securely.
+## 1. Objectives & Scope
+Establish foundational application architecture and implement a complete, secure authentication system connecting frontend and backend.
 
-## Acceptance Criteria
-- User can register with valid email and password.
-- Duplicate email registration returns a descriptive 400 validation error.
-- Invalid credentials return 401 Unauthorized.
-- Passwords are encrypted with Django's password hasher.
-- Unauthenticated requests cannot access protected endpoints.
-- Frontend forms display server validation errors accurately.
+### Functional Requirements Delivered
+- **FR-01: User Registration**
+  - Full Name, Email, Password, Password Confirmation
+  - Email normalization, database uniqueness constraint
+  - Password strength validation via Django's password validators
+  - Passwords hashed using PBKDF2/SHA256, never stored in plain text
+- **FR-02: User Login**
+  - Email & Password input with rate limiting
+  - Generic authentication failure ("Invalid email or password.")
+  - Establishes HTTP-only session cookie with session ID regeneration
+- **FR-03: Current User Profile**
+  - Authenticated endpoint `GET /api/v1/auth/me/` returning public profile
+  - Unauthenticated requests return `401 Unauthorized`
+- **FR-04: User Logout**
+  - `POST /api/v1/auth/logout/` invalidating session and clearing cookies
+- **FR-05: Protected Routes**
+  - Client-side navigation guards for `/dashboard`, `/settings/profile`, `/settings/account`
+  - Public routes `/login`, `/register` redirecting to dashboard when authenticated
+- **CSRF Token Handling**
+  - `GET /api/v1/auth/csrf/` endpoint providing CSRF token and setting cookie

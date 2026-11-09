@@ -43,3 +43,4 @@ docker compose up -d
 ```
 
 Frontend will be available at `http://localhost:5173` and Backend at `http://localhost:8000`.
+
