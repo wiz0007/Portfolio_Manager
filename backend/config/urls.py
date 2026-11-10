@@ -9,8 +9,12 @@ from drf_spectacular.views import (
 urlpatterns = [
     path('admin/', admin.site.urls),
 
-    # Authentication API v1
+    # Authentication & User Profile API v1
     path('api/v1/auth/', include('apps.users.api.v1.urls')),
+    path('api/v1/users/', include('apps.users.api.v1.urls_users')),
+
+    # Dashboard API v1
+    path('api/v1/dashboard/', include('apps.dashboard.api.v1.urls')),
 
     # OpenAPI Documentation
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),

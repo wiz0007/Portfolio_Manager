@@ -38,6 +38,7 @@ INSTALLED_APPS = [
 
     # Domain Apps
     'apps.users',
+    'apps.dashboard',
     'apps.portfolios',
     'apps.assets',
     'apps.transactions',
