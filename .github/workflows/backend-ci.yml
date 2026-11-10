@@ -18,6 +18,10 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.test
+      SECRET_KEY: ci-test-secret-key-not-for-production
+      PYTHONPATH: .
 
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +29,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
           cache: 'pip'
           cache-dependency-path: backend/requirements/development.txt
 
@@ -42,6 +46,3 @@ jobs:
 
       - name: Run unit & API tests (Pytest)
         run: pytest -v
-        env:
-          DJANGO_SETTINGS_MODULE: config.settings.test
-

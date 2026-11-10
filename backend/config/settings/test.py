@@ -1,18 +1,21 @@
 import os
+from urllib.parse import unquote
+
+import dj_database_url
 
 from .base import *
 
 DEBUG = False
 TESTING = True
 
-# If running in CI with a dedicated CI PostgreSQL service container
-if os.getenv('CI_TEST_DATABASE_URL'):
-    import dj_database_url
+test_db_url = os.getenv('CI_TEST_DATABASE_URL')
+if test_db_url:
+    ssl_require = 'neon.tech' in test_db_url or 'sslmode=require' in test_db_url
+    parsed = dj_database_url.parse(test_db_url, conn_max_age=0, ssl_require=ssl_require)
+    if parsed.get('PASSWORD'):
+        parsed['PASSWORD'] = unquote(parsed['PASSWORD'])
     DATABASES = {
-        'default': dj_database_url.parse(
-            os.environ['CI_TEST_DATABASE_URL'],
-            conn_max_age=0,
-        )
+        'default': parsed
     }
 else:
     # Isolated in-memory SQLite for local test runs

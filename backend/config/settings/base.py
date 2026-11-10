@@ -96,25 +96,30 @@ except ImportError:
         DATABASE_ENGINE = 'django_pg8000'
 
 DATABASE_URL = os.getenv('DATABASE_URL')
-if not DATABASE_URL:
-    raise ValueError(
-        "DATABASE_URL environment variable is required. "
-        "Please configure it in backend/.env or your environment."
-    )
+if DATABASE_URL:
+    ssl_require = 'neon.tech' in DATABASE_URL or 'sslmode=require' in DATABASE_URL
+    parsed_db = dj_database_url.parse(DATABASE_URL, conn_max_age=0, ssl_require=ssl_require)
+    if parsed_db.get('PASSWORD'):
+        parsed_db['PASSWORD'] = unquote(parsed_db['PASSWORD'])
+    parsed_db['ENGINE'] = DATABASE_ENGINE
+    if DATABASE_ENGINE == 'django_pg8000':
+        import ssl
+        options = parsed_db.setdefault('OPTIONS', {})
+        options.pop('sslmode', None)
+        options.pop('channel_binding', None)
+        options['ssl_context'] = ssl.create_default_context()
 
-parsed_db = dj_database_url.parse(DATABASE_URL, conn_max_age=0, ssl_require=True)
-parsed_db['PASSWORD'] = unquote(parsed_db['PASSWORD'])
-parsed_db['ENGINE'] = DATABASE_ENGINE
-if DATABASE_ENGINE == 'django_pg8000':
-    import ssl
-    options = parsed_db.setdefault('OPTIONS', {})
-    options.pop('sslmode', None)
-    options.pop('channel_binding', None)
-    options['ssl_context'] = ssl.create_default_context()
-
-DATABASES = {
-    'default': parsed_db
-}
+    DATABASES = {
+        'default': parsed_db
+    }
+else:
+    # Safe fallback when DATABASE_URL is not set (e.g. CI checks / test settings)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # Custom User Model
 AUTH_USER_MODEL = 'users.User'
