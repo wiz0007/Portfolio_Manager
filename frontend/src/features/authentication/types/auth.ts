@@ -3,6 +3,9 @@ export interface User {
   email: string;
   full_name: string;
   date_joined: string;
+  is_active?: boolean;
+  is_email_verified?: boolean;
+  email_verified_at?: string | null;
 }
 
 export interface RegisterRequest {

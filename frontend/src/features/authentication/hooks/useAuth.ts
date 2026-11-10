@@ -70,3 +70,20 @@ export function useUpdateProfile() {
   });
 }
 
+export function useVerifyEmail() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { token: string }) => authService.verifyEmail(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: AUTH_USER_QUERY_KEY });
+    },
+  });
+}
+
+export function useResendVerification() {
+  return useMutation({
+    mutationFn: (payload?: { email?: string }) => authService.resendVerification(payload),
+  });
+}
+

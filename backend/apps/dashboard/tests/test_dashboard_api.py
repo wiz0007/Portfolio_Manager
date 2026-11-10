@@ -64,3 +64,28 @@ class TestDashboardOverviewAPI:
         assert res_b.status_code == status.HTTP_200_OK
         assert res_b.data['user']['email'] == user_b.email
         assert res_b.data['user']['email'] != res_a.data['user']['email']
+
+    def test_dashboard_reflects_actual_portfolios(self, api_client, user_a, user_b):
+        from apps.portfolios.models import Portfolio
+        url = reverse('dashboard_api_v1:dashboard-overview')
+
+        # Create portfolios for user_a
+        Portfolio.objects.create(user=user_a, name="Alpha Growth", base_currency="INR")
+        Portfolio.objects.create(user=user_a, name="Global Tech", base_currency="USD")
+
+        # user_a should see count=2 and both portfolios
+        api_client.force_authenticate(user=user_a)
+        res_a = api_client.get(url)
+        assert res_a.status_code == status.HTTP_200_OK
+        assert res_a.data['portfolio_count'] == 2
+        assert len(res_a.data['recent_portfolios']) == 2
+        names = [p['name'] for p in res_a.data['recent_portfolios']]
+        assert "Alpha Growth" in names
+        assert "Global Tech" in names
+
+        # user_b has no portfolios, should still see count=0 and empty list
+        api_client.force_authenticate(user=user_b)
+        res_b = api_client.get(url)
+        assert res_b.status_code == status.HTTP_200_OK
+        assert res_b.data['portfolio_count'] == 0
+        assert res_b.data['recent_portfolios'] == []

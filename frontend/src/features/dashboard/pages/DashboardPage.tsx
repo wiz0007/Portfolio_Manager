@@ -7,20 +7,37 @@ import {
   ShieldCheck,
   Database,
   ArrowRight,
+  Plus,
+  Calendar,
   Sparkles,
 } from 'lucide-react';
 import { useCurrentUser } from '@/features/authentication/hooks/useAuth';
 import { useDashboardOverview } from '@/features/dashboard/hooks/useDashboard';
+import { useHealthCheck } from '@/shared/hooks/useHealth';
 import { Card, CardTitle, CardDescription } from '@/shared/ui/Card';
 import { Button } from '@/shared/ui/Button';
 
 export const DashboardPage: React.FC = () => {
   const { data: currentUser } = useCurrentUser();
   const { data: overview, isLoading } = useDashboardOverview();
+  const { data: healthData } = useHealthCheck();
 
-  // Prefer overview data, fall back to currentUser
   const user = overview?.user || currentUser;
   const portfolioCount = overview?.portfolio_count ?? 0;
+  const recentPortfolios = overview?.recent_portfolios ?? [];
+
+  const formatDate = (dateStr: string) => {
+    try {
+      return new Date(dateStr).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const isDbConnected = healthData?.database === 'connected';
 
   return (
     <div className="space-y-6">
@@ -32,7 +49,9 @@ export const DashboardPage: React.FC = () => {
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
               Active Session
             </span>
-            <span className="text-xs text-slate-400">| Neon PostgreSQL</span>
+            <span className="text-xs text-slate-400">
+              | DB Status: {isDbConnected ? 'Connected' : 'Verifying'}
+            </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
             Welcome back, {user?.full_name || 'Investor'}!
@@ -48,9 +67,9 @@ export const DashboardPage: React.FC = () => {
               <User className="mr-1.5 h-3.5 w-3.5" /> Edit Profile
             </Button>
           </Link>
-          <Link to="/portfolios">
+          <Link to="/portfolios/new">
             <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white">
-              <Briefcase className="mr-1.5 h-3.5 w-3.5" /> View Portfolios
+              <Plus className="mr-1.5 h-3.5 w-3.5" /> New Portfolio
             </Button>
           </Link>
         </div>
@@ -69,22 +88,22 @@ export const DashboardPage: React.FC = () => {
             {isLoading ? <span className="text-slate-600">...</span> : portfolioCount}
           </div>
           <p className="mt-1 text-xs text-slate-500">
-            {portfolioCount === 0 ? 'No active portfolios yet' : `${portfolioCount} connected`}
+            {portfolioCount === 0 ? 'No active portfolios yet' : `${portfolioCount} active portfolio${portfolioCount > 1 ? 's' : ''}`}
           </p>
         </Card>
 
         <Card className="border-slate-800 bg-slate-900/60 p-5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Database Engine
+              Database Connectivity
             </span>
             <Database className="h-4 w-4 text-emerald-400" />
           </div>
           <div className="mt-2 text-lg font-bold text-emerald-400">
-            Neon PostgreSQL
+            {isDbConnected ? 'PostgreSQL Connected' : 'Checking connection...'}
           </div>
           <p className="mt-1 text-xs text-slate-500">
-            AWS Singapore • UTC Storage
+            Verified backend health probe
           </p>
         </Card>
 
@@ -106,43 +125,81 @@ export const DashboardPage: React.FC = () => {
 
       {/* Main Content Grid: Portfolios & Analytics Preview */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Portfolio Section with Empty State */}
+        {/* Portfolio Section */}
         <Card className="border-slate-800 bg-slate-900/60 p-6 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
                 <CardTitle className="text-lg font-semibold text-white">Your Portfolios</CardTitle>
                 <CardDescription className="text-xs text-slate-400">
-                  Real-time multi-asset portfolio status
+                  Real user portfolio containers
                 </CardDescription>
               </div>
-              <span className="rounded bg-slate-800 px-2 py-1 text-[11px] font-medium text-slate-400">
-                Total: {portfolioCount}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="rounded bg-slate-800 px-2 py-1 text-[11px] font-medium text-slate-400">
+                  Total: {portfolioCount}
+                </span>
+                <Link to="/portfolios">
+                  <Button variant="ghost" size="sm" className="text-xs text-indigo-400 hover:text-indigo-300 p-1">
+                    View All &rarr;
+                  </Button>
+                </Link>
+              </div>
             </div>
 
-            {/* Empty State per Sprint 2 ERD Section 6.2 */}
-            <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/50 p-8 text-center my-4">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-slate-800/80 text-slate-400 mb-3">
-                <Briefcase className="h-6 w-6" />
+            {/* If zero portfolios: Empty state */}
+            {portfolioCount === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/50 p-8 text-center my-4">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-slate-800/80 text-slate-400 mb-3">
+                  <Briefcase className="h-6 w-6" />
+                </div>
+                <h3 className="text-sm font-semibold text-white mb-1">
+                  You haven't created a portfolio yet
+                </h3>
+                <p className="mx-auto max-w-sm text-xs text-slate-400 mb-4">
+                  Create your first portfolio to start organizing your investment containers and currency allocations.
+                </p>
+                <Link to="/portfolios/new">
+                  <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                    <Plus className="mr-1.5 h-3.5 w-3.5" /> Create Portfolio
+                  </Button>
+                </Link>
               </div>
-              <h3 className="text-sm font-semibold text-white mb-1">
-                You haven't created a portfolio yet
-              </h3>
-              <p className="mx-auto max-w-sm text-xs text-slate-400 mb-4">
-                Portfolio management and multi-asset tracking across stocks, crypto, and funds will be available in the upcoming Sprint 3 release.
-              </p>
-              <Link to="/portfolios">
-                <Button size="sm" variant="outline" className="text-slate-300 border-slate-700 hover:text-white">
-                  Preview Upcoming Features <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                </Button>
-              </Link>
-            </div>
+            ) : (
+              /* Recent Portfolios List */
+              <div className="space-y-3 my-4">
+                {recentPortfolios.map((portfolio) => (
+                  <Link
+                    key={portfolio.id}
+                    to={`/portfolios/${portfolio.id}`}
+                    className="flex items-center justify-between p-3.5 rounded-lg bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 transition-colors group"
+                  >
+                    <div className="min-w-0 pr-3">
+                      <div className="text-sm font-medium text-white group-hover:text-indigo-400 transition-colors truncate">
+                        {portfolio.name}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
+                        <Calendar className="h-3 w-3" />
+                        <span>Created {formatDate(portfolio.created_at)}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="px-2 py-0.5 rounded text-xs font-mono font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                        {portfolio.base_currency}
+                      </span>
+                      <ArrowRight className="h-3.5 w-3.5 text-slate-500 group-hover:text-indigo-400 transition-colors" />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="pt-2 text-[11px] text-slate-500 border-t border-slate-800/80 flex items-center justify-between">
-            <span>Sprint 2 Baseline: Zero mock financial records</span>
-            <span className="text-indigo-400 font-medium">Sprint 3 Foundation</span>
+            <span>Actual PostgreSQL portfolio records</span>
+            <Link to="/portfolios/new" className="text-indigo-400 hover:text-indigo-300 font-medium">
+              + New Portfolio
+            </Link>
           </div>
         </Card>
 
@@ -180,8 +237,8 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           <div className="pt-2 text-[11px] text-slate-500 border-t border-slate-800/80 flex items-center justify-between">
-            <span>OpenAI free API key integration planned</span>
-            <span className="text-purple-400 font-medium">Sprint 4 Roadmap</span>
+            <span>Sprint 4 Foundation</span>
+            <span className="text-purple-400 font-medium">Upcoming Sprint</span>
           </div>
         </Card>
       </div>

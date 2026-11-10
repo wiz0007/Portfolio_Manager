@@ -8,10 +8,12 @@ User = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
     """Serializer for public user profile representation."""
 
+    is_email_verified = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = User
-        fields = ('id', 'full_name', 'email', 'date_joined')
-        read_only_fields = ('id', 'email', 'date_joined')
+        fields = ('id', 'full_name', 'email', 'date_joined', 'is_active', 'is_email_verified', 'email_verified_at')
+        read_only_fields = ('id', 'email', 'date_joined', 'is_active', 'is_email_verified', 'email_verified_at')
 
 
 class RegisterSerializer(serializers.Serializer):
