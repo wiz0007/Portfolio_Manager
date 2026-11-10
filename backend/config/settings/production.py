@@ -1,8 +1,10 @@
+import os
+
 from .base import *
 
 DEBUG = False
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
+ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', '').split(',') if h.strip()]
 
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True

@@ -1,0 +1,26 @@
+import { apiClient } from '@/services/api/client';
+import {
+  User,
+  RegisterRequest,
+  LoginRequest,
+  AuthResponse,
+} from '../types/auth';
+
+export const authService = {
+  async register(payload: RegisterRequest): Promise<AuthResponse> {
+    return apiClient.post<AuthResponse>('/auth/register/', payload);
+  },
+
+  async login(payload: LoginRequest): Promise<AuthResponse> {
+    return apiClient.post<AuthResponse>('/auth/login/', payload);
+  },
+
+  async logout(): Promise<{ message: string }> {
+    return apiClient.post<{ message: string }>('/auth/logout/');
+  },
+
+  async getCurrentUser(): Promise<User> {
+    return apiClient.get<User>('/auth/me/');
+  },
+};
+
