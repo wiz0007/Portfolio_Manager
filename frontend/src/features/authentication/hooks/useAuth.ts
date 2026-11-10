@@ -57,3 +57,16 @@ export function useLogout() {
   });
 }
 
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { full_name: string }) => authService.updateProfile(payload),
+    onSuccess: (updatedUser) => {
+      queryClient.setQueryData(AUTH_USER_QUERY_KEY, updatedUser);
+      queryClient.invalidateQueries({ queryKey: AUTH_USER_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ['dashboardOverview'] });
+    },
+  });
+}
+

@@ -1,0 +1,3 @@
+@echo off
+echo Starting Portfolio Manager Backend on http://127.0.0.1:8000/ ...
+backend\.venv\Scripts\python.exe backend\manage.py runserver

@@ -11,9 +11,11 @@ from rest_framework.views import APIView
 from apps.users.api.v1.serializers import (
     LoginSerializer,
     RegisterSerializer,
+    UserProfileUpdateSerializer,
     UserSerializer,
 )
 from apps.users.services.auth_service import AuthService
+from apps.users.services.user_service import UserService
 
 
 class CSRFTokenView(APIView):
@@ -129,7 +131,7 @@ class LogoutView(APIView):
 
 class CurrentUserView(APIView):
     """
-    Retrieve current authenticated user profile.
+    Retrieve or update current authenticated user profile.
     """
     permission_classes = [IsAuthenticated]
 
@@ -140,8 +142,28 @@ class CurrentUserView(APIView):
             200: UserSerializer,
             401: OpenApiResponse(description="Unauthenticated"),
         },
-        tags=["Authentication"]
+        tags=["Authentication", "User Profile"]
     )
     def get(self, request):
         serializer = UserSerializer(request.user)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary="Update User Profile",
+        description="Updates the profile information (full_name) for the currently authenticated user.",
+        request=UserProfileUpdateSerializer,
+        responses={
+            200: UserSerializer,
+            400: OpenApiResponse(description="Validation error"),
+            401: OpenApiResponse(description="Unauthenticated"),
+        },
+        tags=["User Profile"]
+    )
+    def patch(self, request):
+        serializer = UserProfileUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = UserService.update_profile(
+            request.user,
+            full_name=serializer.validated_data['full_name'],
+        )
+        return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
