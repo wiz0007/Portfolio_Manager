@@ -61,3 +61,4 @@ class TestUserModel:
         assert admin.is_staff is True
         assert admin.is_superuser is True
         assert admin.is_active is True
+

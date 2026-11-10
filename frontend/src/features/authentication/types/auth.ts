@@ -30,3 +30,4 @@ export interface ApiErrorResponse {
   full_name?: string[];
   [key: string]: unknown;
 }
+

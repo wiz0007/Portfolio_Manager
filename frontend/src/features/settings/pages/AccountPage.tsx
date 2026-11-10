@@ -64,3 +64,4 @@ export const AccountPage: React.FC = () => {
     </div>
   );
 };
+

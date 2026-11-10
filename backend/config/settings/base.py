@@ -1,13 +1,20 @@
 import os
 from pathlib import Path
+from urllib.parse import unquote
 
 import dj_database_url
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+# Load environment variables from backend/.env if present
+ENV_FILE = BASE_DIR / '.env'
+if ENV_FILE.exists():
+    load_dotenv(ENV_FILE)
+
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-dev-key-change-me-portfolio-manager-sprint1')
 
-DEBUG = False
+DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 't')
 
 ALLOWED_HOSTS = [
     host.strip()
@@ -74,13 +81,38 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
-# Database
-# Connects to PostgreSQL via DATABASE_URL if configured, otherwise falls back to SQLite for local development/testing.
-DATABASES = {
-    'default': dj_database_url.config(
-        default=os.getenv('DATABASE_URL', f'sqlite:///{BASE_DIR / "db.sqlite3"}'),
-        conn_max_age=600,
+# Database Configuration
+# Determines engine based on psycopg availability. In standard Linux / Docker / CI environments,
+# django.db.backends.postgresql with psycopg 3 is used. If Windows Smart App Control blocks native
+# binary C-extensions, django_pg8000 provides a 100% pure-Python PostgreSQL SSL driver.
+DATABASE_ENGINE = 'django.db.backends.postgresql'
+try:
+    import psycopg  # noqa: F401
+except ImportError:
+    try:
+        import psycopg2  # noqa: F401
+    except ImportError:
+        DATABASE_ENGINE = 'django_pg8000'
+
+DATABASE_URL = os.getenv('DATABASE_URL')
+if not DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL environment variable is required. "
+        "Please configure it in backend/.env or your environment."
     )
+
+parsed_db = dj_database_url.parse(DATABASE_URL, conn_max_age=0, ssl_require=True)
+parsed_db['PASSWORD'] = unquote(parsed_db['PASSWORD'])
+parsed_db['ENGINE'] = DATABASE_ENGINE
+if DATABASE_ENGINE == 'django_pg8000':
+    import ssl
+    options = parsed_db.setdefault('OPTIONS', {})
+    options.pop('sslmode', None)
+    options.pop('channel_binding', None)
+    options['ssl_context'] = ssl.create_default_context()
+
+DATABASES = {
+    'default': parsed_db
 }
 
 # Custom User Model

@@ -38,3 +38,23 @@
 | TC-FE-10 | Render RegisterPage elements properly | `RegisterPage.test.tsx` | PASS |
 | TC-FE-11 | Display field-level validation errors on empty register submit | `RegisterPage.test.tsx` | PASS |
 | TC-FE-12 | Validate password mismatch in UI | `RegisterPage.test.tsx` | PASS |
+
+---
+
+## Neon PostgreSQL Verification Matrix (Section 3.6 & 3.7)
+
+| Verification Check | Target | Expected Result | Actual Result | Status |
+|---|---|---|---|---|
+| **Database Connectivity** | `current_database()` | `neondb` | `neondb` | **VERIFIED** |
+| **Application Role** | `current_user` | `main_dev` | `main_dev` | **VERIFIED** |
+| **Engine & Version** | `version()` | PostgreSQL 18.x | PostgreSQL 18.6 | **VERIFIED** |
+| **Pending Migration Check** | `makemigrations --check` | Clean | `No changes detected` | **VERIFIED** |
+| **Migration Execution** | `migrate` | 19 migrations | 19 applied OK | **VERIFIED** |
+| **Schema Integrity** | `users` table | `users_pkey` (UUID), `users_email_key` | Confirmed in `pg_constraint` | **VERIFIED** |
+| **Registration Workflow** | `/api/v1/auth/register/` | 201 Created & Neon persistence | User created in Neon, PBKDF2 hashed | **VERIFIED** |
+| **Duplicate Rejection** | `/api/v1/auth/register/` | 400 Bad Request | Duplicate email rejected | **VERIFIED** |
+| **Login Workflow** | `/api/v1/auth/login/` | 200 OK & session established | Session active | **VERIFIED** |
+| **Profile Retrieval** | `/api/v1/auth/me/` | 200 OK | Profile returned | **VERIFIED** |
+| **Session Invalidation** | `/api/v1/auth/logout/` | 200 OK -> subsequent 401 | Invalidated, 401 returned | **VERIFIED** |
+| **Multi-user Isolation** | `/api/v1/auth/me/` | User B cannot view User A | Verified isolation | **VERIFIED** |
+| **Secret Exemption** | `git check-ignore` | Ignored by Git | `backend/.env` is ignored | **VERIFIED** |

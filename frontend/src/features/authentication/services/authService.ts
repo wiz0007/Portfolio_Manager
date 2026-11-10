@@ -23,3 +23,4 @@ export const authService = {
     return apiClient.get<User>('/auth/me/');
   },
 };
+

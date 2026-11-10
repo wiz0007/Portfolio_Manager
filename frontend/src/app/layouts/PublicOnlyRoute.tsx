@@ -15,3 +15,4 @@ export const PublicOnlyRoute: React.FC = () => {
 
   return <Outlet />;
 };
+
