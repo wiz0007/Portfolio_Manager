@@ -1,0 +1,15 @@
+{
+  "name": "portfolio-manager-monorepo",
+  "private": true,
+  "description": "Multi-Asset Portfolio Management & Financial Intelligence Platform",
+  "scripts": {
+    "dev:backend": "backend\\.venv\\Scripts\\python.exe backend\\manage.py runserver",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "test:backend": "backend\\.venv\\Scripts\\pytest backend",
+    "test:frontend": "npm run test --prefix frontend",
+    "test": "npm run test:backend && npm run test:frontend",
+    "typecheck": "npm run typecheck --prefix frontend",
+    "build:frontend": "npm run build --prefix frontend",
+    "lint:backend": "backend\\.venv\\Scripts\\ruff check backend"
+  }
+}

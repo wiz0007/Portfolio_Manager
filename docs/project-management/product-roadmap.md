@@ -21,3 +21,4 @@ A scalable, multi-asset portfolio management platform enabling users to organize
 ## Phase 3: Financial Analytics & AI Intelligence
 - Deterministic performance and risk engines (XIRR, Sharpe, VaR).
 - OpenAI-powered portfolio analysis and natural-language summaries.
+

@@ -1,4 +1,4 @@
-Django>=5.0,<5.1
+Django>=5.0,<5.2
 djangorestframework>=3.15.0
 django-cors-headers>=4.3.1
 psycopg[binary]>=3.1.18
@@ -7,3 +7,5 @@ pydantic>=2.6.4
 celery>=5.3.6
 redis>=5.0.3
 drf-spectacular>=0.27.1
+dj-database-url>=2.1.0
+django-pg8000>=0.0.5
