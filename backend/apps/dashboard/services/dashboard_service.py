@@ -14,16 +14,20 @@ class DashboardService:
     def get_user_dashboard_overview(user: User) -> dict[str, Any]:
         """
         Gathers real dashboard overview data for the authenticated user.
-        Queries real portfolio counts and recent portfolios, scoped to the user.
+        Queries real portfolio counts and recent portfolios, scoped strictly to the user.
         """
-        user_portfolios = Portfolio.objects.filter(user=user).order_by('-created_at')
+        user_portfolios = Portfolio.objects.filter(user=user).order_by('-updated_at')
         count = user_portfolios.count()
+        first_portfolio = user_portfolios.first()
+        base_currency = first_portfolio.base_currency if first_portfolio else "INR"
+
         recent = [
             {
                 "id": p.id,
                 "name": p.name,
                 "base_currency": p.base_currency,
                 "created_at": p.created_at,
+                "updated_at": p.updated_at,
             }
             for p in user_portfolios[:5]
         ]
@@ -34,5 +38,6 @@ class DashboardService:
                 "email": user.email,
             },
             "portfolio_count": count,
+            "base_currency": base_currency,
             "recent_portfolios": recent,
         }

@@ -89,3 +89,34 @@ class TestDashboardOverviewAPI:
         assert res_b.status_code == status.HTTP_200_OK
         assert res_b.data['portfolio_count'] == 0
         assert res_b.data['recent_portfolios'] == []
+        assert res_b.data['base_currency'] == 'INR'
+
+    def test_dashboard_updates_after_portfolio_crud(self, api_client, user_a):
+        from apps.portfolios.models import Portfolio
+        url = reverse('dashboard_api_v1:dashboard-overview')
+        api_client.force_authenticate(user=user_a)
+
+        # 1. Initial state: 0 portfolios
+        res = api_client.get(url)
+        assert res.data['portfolio_count'] == 0
+        assert res.data['base_currency'] == 'INR'
+
+        # 2. Create portfolio
+        p1 = Portfolio.objects.create(user=user_a, name="Crypto Stash", base_currency="USD")
+        res = api_client.get(url)
+        assert res.data['portfolio_count'] == 1
+        assert res.data['base_currency'] == 'USD'
+        assert res.data['recent_portfolios'][0]['name'] == 'Crypto Stash'
+        assert 'updated_at' in res.data['recent_portfolios'][0]
+
+        # 3. Update portfolio
+        p1.name = "Web3 Assets"
+        p1.save()
+        res = api_client.get(url)
+        assert res.data['recent_portfolios'][0]['name'] == 'Web3 Assets'
+
+        # 4. Delete portfolio
+        p1.delete()
+        res = api_client.get(url)
+        assert res.data['portfolio_count'] == 0
+        assert res.data['recent_portfolios'] == []

@@ -16,6 +16,7 @@ class RecentPortfolioSerializer(serializers.Serializer):
     name = serializers.CharField(read_only=True)
     base_currency = serializers.CharField(read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
 
 
 class DashboardOverviewSerializer(serializers.Serializer):
@@ -23,4 +24,5 @@ class DashboardOverviewSerializer(serializers.Serializer):
 
     user = DashboardUserSerializer(read_only=True)
     portfolio_count = serializers.IntegerField(read_only=True, default=0)
+    base_currency = serializers.CharField(read_only=True, default='INR')
     recent_portfolios = RecentPortfolioSerializer(many=True, read_only=True, default=list)

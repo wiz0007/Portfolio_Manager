@@ -4,12 +4,14 @@ import {
   Briefcase,
   BarChart3,
   User,
-  ShieldCheck,
   Database,
   ArrowRight,
   Plus,
   Calendar,
   Sparkles,
+  AlertTriangle,
+  RotateCw,
+  Coins,
 } from 'lucide-react';
 import { useCurrentUser } from '@/features/authentication/hooks/useAuth';
 import { useDashboardOverview } from '@/features/dashboard/hooks/useDashboard';
@@ -19,11 +21,17 @@ import { Button } from '@/shared/ui/Button';
 
 export const DashboardPage: React.FC = () => {
   const { data: currentUser } = useCurrentUser();
-  const { data: overview, isLoading } = useDashboardOverview();
+  const {
+    data: overview,
+    isLoading,
+    isError,
+    refetch,
+  } = useDashboardOverview();
   const { data: healthData } = useHealthCheck();
 
   const user = overview?.user || currentUser;
   const portfolioCount = overview?.portfolio_count ?? 0;
+  const baseCurrency = overview?.base_currency || 'INR';
   const recentPortfolios = overview?.recent_portfolios ?? [];
 
   const formatDate = (dateStr: string) => {
@@ -75,8 +83,34 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
+      {/* API Error State Banner */}
+      {isError && (
+        <Card className="border-rose-900/40 bg-rose-950/20 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-rose-300">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-rose-400 shrink-0" />
+            <div>
+              <div className="text-sm font-semibold text-rose-200">
+                Unable to load dashboard overview
+              </div>
+              <div className="text-xs text-rose-400/90 mt-0.5">
+                A network or server error occurred while retrieving your portfolio records.
+              </div>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => refetch()}
+            className="border-rose-800 text-rose-200 hover:bg-rose-900/30 shrink-0"
+          >
+            <RotateCw className="mr-1.5 h-3.5 w-3.5" /> Retry
+          </Button>
+        </Card>
+      )}
+
       {/* Overview Stat Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {/* Stat 1: Portfolios Count */}
         <Card className="border-slate-800 bg-slate-900/60 p-5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
@@ -85,13 +119,30 @@ export const DashboardPage: React.FC = () => {
             <Briefcase className="h-4 w-4 text-indigo-400" />
           </div>
           <div className="mt-2 text-2xl font-bold text-white">
-            {isLoading ? <span className="text-slate-600">...</span> : portfolioCount}
+            {isLoading ? <span className="text-slate-600 animate-pulse">...</span> : portfolioCount}
           </div>
           <p className="mt-1 text-xs text-slate-500">
             {portfolioCount === 0 ? 'No active portfolios yet' : `${portfolioCount} active portfolio${portfolioCount > 1 ? 's' : ''}`}
           </p>
         </Card>
 
+        {/* Stat 2: Base / Primary Currency */}
+        <Card className="border-slate-800 bg-slate-900/60 p-5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Primary Currency
+            </span>
+            <Coins className="h-4 w-4 text-amber-400" />
+          </div>
+          <div className="mt-2 text-2xl font-bold text-white font-mono">
+            {isLoading ? <span className="text-slate-600 animate-pulse">...</span> : baseCurrency}
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Default portfolio reporting unit
+          </p>
+        </Card>
+
+        {/* Stat 3: Security & Database Connectivity */}
         <Card className="border-slate-800 bg-slate-900/60 p-5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
@@ -104,21 +155,6 @@ export const DashboardPage: React.FC = () => {
           </div>
           <p className="mt-1 text-xs text-slate-500">
             Verified backend health probe
-          </p>
-        </Card>
-
-        <Card className="border-slate-800 bg-slate-900/60 p-5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Security Protocol
-            </span>
-            <ShieldCheck className="h-4 w-4 text-cyan-400" />
-          </div>
-          <div className="mt-2 text-lg font-bold text-cyan-300">
-            Session Cookies
-          </div>
-          <p className="mt-1 text-xs text-slate-500">
-            HTTP-only • CSRF Enforced
           </p>
         </Card>
       </div>
@@ -147,8 +183,20 @@ export const DashboardPage: React.FC = () => {
               </div>
             </div>
 
-            {/* If zero portfolios: Empty state */}
-            {portfolioCount === 0 ? (
+            {/* Loading State Skeleton */}
+            {isLoading && (
+              <div className="space-y-3 my-4">
+                {[1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="p-3.5 rounded-lg bg-slate-950/40 border border-slate-800 animate-pulse h-16"
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Empty State */}
+            {!isLoading && portfolioCount === 0 && (
               <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/50 p-8 text-center my-4">
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-slate-800/80 text-slate-400 mb-3">
                   <Briefcase className="h-6 w-6" />
@@ -165,8 +213,10 @@ export const DashboardPage: React.FC = () => {
                   </Button>
                 </Link>
               </div>
-            ) : (
-              /* Recent Portfolios List */
+            )}
+
+            {/* Recent Portfolios List */}
+            {!isLoading && portfolioCount > 0 && (
               <div className="space-y-3 my-4">
                 {recentPortfolios.map((portfolio) => (
                   <Link
@@ -203,7 +253,7 @@ export const DashboardPage: React.FC = () => {
           </div>
         </Card>
 
-        {/* Analytics Section (Sprint 4 Preview) */}
+        {/* Analytics Section (Sprint 5 Roadmap) */}
         <Card className="border-slate-800 bg-slate-900/60 p-6 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-4">
@@ -214,7 +264,7 @@ export const DashboardPage: React.FC = () => {
                 </CardDescription>
               </div>
               <span className="rounded bg-purple-950/60 border border-purple-500/30 px-2 py-0.5 text-[11px] font-medium text-purple-300 flex items-center gap-1">
-                <Sparkles className="h-3 w-3" /> Sprint 4
+                <Sparkles className="h-3 w-3" /> Upcoming
               </span>
             </div>
 
@@ -226,7 +276,7 @@ export const DashboardPage: React.FC = () => {
                 Financial Analytics & Intelligence
               </h3>
               <p className="mx-auto max-w-sm text-xs text-slate-400 mb-4">
-                Detailed CAGR calculations, benchmark comparisons, and OpenAI LLM financial recommendations are scheduled for Sprint 4.
+                Detailed CAGR calculations, benchmark comparisons, holdings performance, and AI-assisted financial recommendations are scheduled for the next release.
               </p>
               <Link to="/analytics">
                 <Button size="sm" variant="outline" className="text-purple-300 border-purple-800/50 hover:bg-purple-950/40">
@@ -237,8 +287,8 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           <div className="pt-2 text-[11px] text-slate-500 border-t border-slate-800/80 flex items-center justify-between">
-            <span>Sprint 4 Foundation</span>
-            <span className="text-purple-400 font-medium">Upcoming Sprint</span>
+            <span>MVP Foundation Ready</span>
+            <span className="text-purple-400 font-medium">Sprint 5 Scope</span>
           </div>
         </Card>
       </div>
