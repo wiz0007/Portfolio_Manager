@@ -68,8 +68,8 @@ class TestEndToEndMVPJourney:
         assert dash_res.status_code == status.HTTP_200_OK
         dash_data = dash_res.json()
         assert dash_data["portfolio_count"] == 0
-        assert dash_data["base_currency"] == "INR"
         assert dash_data["recent_portfolios"] == []
+        assert "base_currency" not in dash_data
 
         # Step 5: Create First Portfolio
         port_a_res = client.post('/api/v1/portfolios/', {
@@ -84,9 +84,10 @@ class TestEndToEndMVPJourney:
         dash_res_2 = client.get('/api/v1/dashboard/overview/')
         assert dash_res_2.status_code == status.HTTP_200_OK
         assert dash_res_2.json()["portfolio_count"] == 1
-        assert dash_res_2.json()["base_currency"] == "USD"
         assert dash_res_2.json()["recent_portfolios"][0]["id"] == port_a_id
         assert dash_res_2.json()["recent_portfolios"][0]["name"] == "Retirement Fund"
+        assert dash_res_2.json()["recent_portfolios"][0]["base_currency"] == "USD"
+        assert "base_currency" not in dash_res_2.json()
 
         # Step 7: View Portfolio Details
         detail_res = client.get(f'/api/v1/portfolios/{port_a_id}/')

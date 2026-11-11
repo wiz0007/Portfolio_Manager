@@ -11,7 +11,7 @@ import {
   Sparkles,
   AlertTriangle,
   RotateCw,
-  Coins,
+  ShieldCheck,
 } from 'lucide-react';
 import { useCurrentUser } from '@/features/authentication/hooks/useAuth';
 import { useDashboardOverview } from '@/features/dashboard/hooks/useDashboard';
@@ -27,12 +27,9 @@ export const DashboardPage: React.FC = () => {
     isError,
     refetch,
   } = useDashboardOverview();
-  const { data: healthData } = useHealthCheck();
+  const { data: healthData, isLoading: isHealthLoading, isError: isHealthError } = useHealthCheck();
 
   const user = overview?.user || currentUser;
-  const portfolioCount = overview?.portfolio_count ?? 0;
-  const baseCurrency = overview?.base_currency || 'INR';
-  const recentPortfolios = overview?.recent_portfolios ?? [];
 
   const formatDate = (dateStr: string) => {
     try {
@@ -45,7 +42,29 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
-  const isDbConnected = healthData?.database === 'connected';
+  const getDbHealthStatus = () => {
+    if (isHealthLoading) {
+      return {
+        label: 'Checking connection...',
+        color: 'text-amber-400',
+        dot: 'bg-amber-400',
+      };
+    }
+    if (isHealthError || healthData?.database !== 'connected') {
+      return {
+        label: 'Connection unavailable',
+        color: 'text-rose-400',
+        dot: 'bg-rose-400',
+      };
+    }
+    return {
+      label: 'Service connected',
+      color: 'text-emerald-400',
+      dot: 'bg-emerald-400',
+    };
+  };
+
+  const dbHealth = getDbHealthStatus();
 
   return (
     <div className="space-y-6">
@@ -57,8 +76,10 @@ export const DashboardPage: React.FC = () => {
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
               Active Session
             </span>
-            <span className="text-xs text-slate-400">
-              | DB Status: {isDbConnected ? 'Connected' : 'Verifying'}
+            <span className="text-xs text-slate-400 flex items-center gap-1.5">
+              <span>| DB Status:</span>
+              <span className={`inline-block h-1.5 w-1.5 rounded-full ${dbHealth.dot}`} />
+              <span className={dbHealth.color}>{dbHealth.label}</span>
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
@@ -119,42 +140,54 @@ export const DashboardPage: React.FC = () => {
             <Briefcase className="h-4 w-4 text-indigo-400" />
           </div>
           <div className="mt-2 text-2xl font-bold text-white">
-            {isLoading ? <span className="text-slate-600 animate-pulse">...</span> : portfolioCount}
+            {isLoading && !overview ? (
+              <span className="text-slate-600 animate-pulse">...</span>
+            ) : isError && !overview ? (
+              <span className="text-slate-500">—</span>
+            ) : (
+              overview?.portfolio_count ?? 0
+            )}
           </div>
           <p className="mt-1 text-xs text-slate-500">
-            {portfolioCount === 0 ? 'No active portfolios yet' : `${portfolioCount} active portfolio${portfolioCount > 1 ? 's' : ''}`}
+            {isLoading && !overview
+              ? 'Loading active portfolios...'
+              : isError && !overview
+              ? 'Unable to load count'
+              : overview?.portfolio_count === 0
+              ? 'No active portfolios yet'
+              : `${overview?.portfolio_count} active portfolio${(overview?.portfolio_count ?? 0) > 1 ? 's' : ''}`}
           </p>
         </Card>
 
-        {/* Stat 2: Base / Primary Currency */}
-        <Card className="border-slate-800 bg-slate-900/60 p-5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Primary Currency
-            </span>
-            <Coins className="h-4 w-4 text-amber-400" />
-          </div>
-          <div className="mt-2 text-2xl font-bold text-white font-mono">
-            {isLoading ? <span className="text-slate-600 animate-pulse">...</span> : baseCurrency}
-          </div>
-          <p className="mt-1 text-xs text-slate-500">
-            Default portfolio reporting unit
-          </p>
-        </Card>
-
-        {/* Stat 3: Security & Database Connectivity */}
+        {/* Stat 2: Database Connectivity */}
         <Card className="border-slate-800 bg-slate-900/60 p-5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
               Database Connectivity
             </span>
-            <Database className="h-4 w-4 text-emerald-400" />
+            <Database className={`h-4 w-4 ${dbHealth.color}`} />
           </div>
-          <div className="mt-2 text-lg font-bold text-emerald-400">
-            {isDbConnected ? 'PostgreSQL Connected' : 'Checking connection...'}
+          <div className={`mt-2 text-lg font-bold ${dbHealth.color}`}>
+            {dbHealth.label}
           </div>
           <p className="mt-1 text-xs text-slate-500">
             Verified backend health probe
+          </p>
+        </Card>
+
+        {/* Stat 3: Security & Session Protection */}
+        <Card className="border-slate-800 bg-slate-900/60 p-5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Session Security
+            </span>
+            <ShieldCheck className="h-4 w-4 text-indigo-400" />
+          </div>
+          <div className="mt-2 text-lg font-bold text-white">
+            Active Session
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            HTTP-only cookies & CSRF verification
           </p>
         </Card>
       </div>
@@ -172,9 +205,11 @@ export const DashboardPage: React.FC = () => {
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
-                <span className="rounded bg-slate-800 px-2 py-1 text-[11px] font-medium text-slate-400">
-                  Total: {portfolioCount}
-                </span>
+                {overview && (
+                  <span className="rounded bg-slate-800 px-2 py-1 text-[11px] font-medium text-slate-400">
+                    Total: {overview.portfolio_count}
+                  </span>
+                )}
                 <Link to="/portfolios">
                   <Button variant="ghost" size="sm" className="text-xs text-indigo-400 hover:text-indigo-300 p-1">
                     View All &rarr;
@@ -184,7 +219,7 @@ export const DashboardPage: React.FC = () => {
             </div>
 
             {/* Loading State Skeleton */}
-            {isLoading && (
+            {isLoading && !overview && (
               <div className="space-y-3 my-4">
                 {[1, 2].map((i) => (
                   <div
@@ -195,8 +230,29 @@ export const DashboardPage: React.FC = () => {
               </div>
             )}
 
-            {/* Empty State */}
-            {!isLoading && portfolioCount === 0 && (
+            {/* Error State when no cached overview exists */}
+            {isError && !overview && (
+              <div className="rounded-xl border border-rose-900/30 bg-rose-950/20 p-6 text-center my-4">
+                <AlertTriangle className="h-6 w-6 text-rose-400 mx-auto mb-2" />
+                <h3 className="text-sm font-semibold text-rose-200 mb-1">
+                  Failed to load portfolios
+                </h3>
+                <p className="text-xs text-rose-400/90 mb-3">
+                  Could not retrieve your portfolio data. Please check your connection and try again.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => refetch()}
+                  className="border-rose-800 text-rose-200 hover:bg-rose-900/30"
+                >
+                  <RotateCw className="mr-1.5 h-3.5 w-3.5" /> Retry
+                </Button>
+              </div>
+            )}
+
+            {/* Empty State: Only when successfully loaded with 0 portfolios */}
+            {overview && overview.portfolio_count === 0 && (
               <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/50 p-8 text-center my-4">
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-slate-800/80 text-slate-400 mb-3">
                   <Briefcase className="h-6 w-6" />
@@ -215,10 +271,10 @@ export const DashboardPage: React.FC = () => {
               </div>
             )}
 
-            {/* Recent Portfolios List */}
-            {!isLoading && portfolioCount > 0 && (
+            {/* Recent Portfolios List: Only when overview has portfolios */}
+            {overview && overview.portfolio_count > 0 && (
               <div className="space-y-3 my-4">
-                {recentPortfolios.map((portfolio) => (
+                {overview.recent_portfolios.map((portfolio) => (
                   <Link
                     key={portfolio.id}
                     to={`/portfolios/${portfolio.id}`}

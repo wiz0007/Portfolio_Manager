@@ -18,8 +18,6 @@ class DashboardService:
         """
         user_portfolios = Portfolio.objects.filter(user=user).order_by('-updated_at')
         count = user_portfolios.count()
-        first_portfolio = user_portfolios.first()
-        base_currency = first_portfolio.base_currency if first_portfolio else "INR"
 
         recent = [
             {
@@ -38,6 +36,5 @@ class DashboardService:
                 "email": user.email,
             },
             "portfolio_count": count,
-            "base_currency": base_currency,
             "recent_portfolios": recent,
         }

@@ -30,7 +30,7 @@ export const AuthenticatedLayout: React.FC = () => {
       return { label: 'DB: Checking...', color: 'text-amber-400', dot: 'bg-amber-400' };
     }
     if (isHealthError || healthData?.database !== 'connected') {
-      return { label: 'DB: Offline', color: 'text-rose-400', dot: 'bg-rose-400' };
+      return { label: 'DB: Unavailable', color: 'text-rose-400', dot: 'bg-rose-400' };
     }
     return { label: 'DB: Connected', color: 'text-emerald-400', dot: 'bg-emerald-400' };
   };

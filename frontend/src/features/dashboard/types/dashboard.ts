@@ -15,6 +15,5 @@ export interface DashboardRecentPortfolio {
 export interface DashboardOverview {
   user: DashboardUser;
   portfolio_count: number;
-  base_currency: string;
   recent_portfolios: DashboardRecentPortfolio[];
 }

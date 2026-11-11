@@ -24,5 +24,4 @@ class DashboardOverviewSerializer(serializers.Serializer):
 
     user = DashboardUserSerializer(read_only=True)
     portfolio_count = serializers.IntegerField(read_only=True, default=0)
-    base_currency = serializers.CharField(read_only=True, default='INR')
     recent_portfolios = RecentPortfolioSerializer(many=True, read_only=True, default=list)
