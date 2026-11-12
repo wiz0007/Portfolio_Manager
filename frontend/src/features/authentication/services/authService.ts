@@ -26,5 +26,13 @@ export const authService = {
   async updateProfile(payload: { full_name: string }): Promise<User> {
     return apiClient.patch<User>('/users/me/', payload);
   },
+
+  async verifyEmail(payload: { token: string }): Promise<{ message: string; status: string }> {
+    return apiClient.post<{ message: string; status: string }>('/auth/verify-email/', payload);
+  },
+
+  async resendVerification(payload?: { email?: string }): Promise<{ message: string }> {
+    return apiClient.post<{ message: string }>('/auth/resend-verification/', payload || {});
+  },
 };
 

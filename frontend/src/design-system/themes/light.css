@@ -1,0 +1,78 @@
+/**
+ * Enterprise Design System — Theme: Warm Ivory / Atlas Navy (Light)
+ * Rating: 9.6 | Background: Warm Ivory | Foreground: Atlas Navy | Accent: Regal Gold
+ */
+
+[data-theme="light"],
+[data-theme="theme-ivory-atlas"] {
+  /* Surfaces & Backgrounds */
+  --color-bg-app: var(--primitive-ivory-100);            /* #FAF8F5 */
+  --color-bg-subtle: var(--primitive-ivory-200);         /* #F3EFEA */
+  --color-surface-base: var(--primitive-neutral-white);  /* #FFFFFF */
+  --color-surface-card: var(--primitive-neutral-white);  /* #FFFFFF */
+  --color-surface-panel: #F6F2EB;
+  --color-surface-dropdown: var(--primitive-neutral-white);
+  --color-surface-hover: #F0EAE1;
+  --color-surface-active: #E5DDCE;
+
+  /* Typography */
+  --color-text-primary: #0F172A;
+  --color-text-secondary: #334155;
+  --color-text-muted: #64748B;
+  --color-text-inverse: var(--primitive-neutral-white);
+
+  /* Borders */
+  --color-border-subtle: #EFEAE2;
+  --color-border-base: #E4DDD3;
+  --color-border-strong: #CBD5E1;
+
+  /* Brand & Accents */
+  --color-brand-primary: var(--primitive-atlas-800);       /* #0F243A */
+  --color-brand-primary-hover: var(--primitive-atlas-700); /* #152E4D */
+  --color-brand-primary-subtle: #EEF2F6;
+  --color-brand-secondary: #334155;
+  --color-brand-accent: var(--primitive-gold-500);         /* #C59B27 */
+  --color-brand-accent-hover: var(--primitive-gold-600);   /* #A8811A */
+  --color-brand-accent-subtle: #FDF7E7;
+
+  /* Interactive States & Focus */
+  --color-focus-ring: var(--primitive-gold-500);
+  --color-interactive-hover: #F0EAE1;
+  --color-interactive-active: #E5DDCE;
+
+  /* Financial Indicators */
+  --color-positive: #0D7A53;
+  --color-positive-subtle: #E8F6F0;
+  --color-positive-text: #0D7A53;
+
+  --color-negative: #C23434;
+  --color-negative-subtle: #FCE8E8;
+  --color-negative-text: #C23434;
+
+  --color-warning: #B45309;
+  --color-warning-subtle: #FEF3C7;
+  --color-warning-text: #92400E;
+
+  --color-info: #1D4ED8;
+  --color-info-subtle: #EFF6FF;
+  --color-info-text: #1E40AF;
+
+  --color-neutral: #64748B;
+  --color-neutral-subtle: #F1F5F9;
+
+  /* Data Visualization / Chart Series */
+  --chart-color-1: var(--primitive-atlas-800);
+  --chart-color-2: var(--primitive-gold-500);
+  --chart-color-3: #0D7A53;
+  --chart-color-4: #6366F1;
+  --chart-color-5: #EAB308;
+  --chart-grid: #E2E8F0;
+  --chart-axis: #64748B;
+  --chart-tooltip-bg: var(--primitive-atlas-800);
+  --chart-tooltip-text: var(--primitive-ivory-100);
+
+  /* Overlays & Popovers */
+  --color-overlay: rgba(15, 23, 42, 0.6);
+  --color-popover: var(--primitive-neutral-white);
+}
+

@@ -1,0 +1,40 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-8) var(--space-6);
+  background-color: var(--color-surface-card);
+  border: 1px solid rgba(244, 63, 94, 0.25);
+  border-radius: var(--radius-2xl);
+  font-family: var(--font-family-sans);
+}
+
+.iconWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--radius-full);
+  background-color: var(--color-negative-subtle);
+  color: var(--color-negative);
+  margin-bottom: var(--space-3);
+}
+
+.title {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--space-1);
+}
+
+.message {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  max-width: 24rem;
+  margin-bottom: var(--space-4);
+  line-height: var(--line-height-normal);
+}
+

@@ -8,47 +8,47 @@ export const AnalyticsPlaceholderPage: React.FC = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-white">Analytics & Intelligence</h1>
-        <p className="text-sm text-slate-400">Deep performance analytics, risk indicators, and AI financial intelligence.</p>
+        <h1 className="text-2xl font-bold tracking-tight text-theme-text">Analytics & Intelligence</h1>
+        <p className="text-sm text-theme-text-muted">Deep performance analytics, risk indicators, and AI financial intelligence.</p>
       </div>
 
-      <Card className="border-purple-500/30 bg-gradient-to-br from-slate-900 to-purple-950/40 p-8 text-center text-slate-100">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-600/20 border border-purple-500/40 text-purple-400 mb-4">
+      <Card className="border-theme-border bg-theme-card p-8 text-center text-theme-text shadow-sm">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-theme-primary-subtle border border-theme-primary/30 text-theme-primary mb-4">
           <BarChart3 className="h-7 w-7" />
         </div>
-        <CardTitle className="text-xl font-semibold text-white mb-2">
-          Analytics & Insights — Coming in Sprint 4
+        <CardTitle className="text-xl font-semibold text-theme-text mb-2">
+          Analytics & Insights — Coming in Future Sprints
         </CardTitle>
-        <CardDescription className="mx-auto max-w-lg text-sm text-slate-300 mb-6">
-          Real-time performance metrics (XIRR, CAGR, Sharpe ratio, benchmark comparisons) and OpenAI-driven financial insights are scheduled for Sprint 4.
+        <CardDescription className="mx-auto max-w-lg text-sm text-theme-text-muted mb-6">
+          Real-time performance metrics (XIRR, CAGR, Sharpe ratio, benchmark comparisons) and financial insights will be integrated with your portfolios.
         </CardDescription>
 
         <div className="mx-auto grid max-w-2xl grid-cols-1 gap-4 sm:grid-cols-3 text-left mb-6">
-          <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-            <div className="flex items-center gap-2 text-purple-400 text-xs font-semibold uppercase tracking-wider mb-1">
+          <div className="rounded-lg border border-theme-border bg-theme-surface p-4">
+            <div className="flex items-center gap-2 text-theme-primary text-xs font-semibold uppercase tracking-wider mb-1">
               <LineChart className="h-4 w-4" /> Performance
             </div>
-            <p className="text-xs text-slate-400">CAGR, XIRR, drawdown analysis, and historical return curves.</p>
+            <p className="text-xs text-theme-text-muted">CAGR, XIRR, drawdown analysis, and historical return curves.</p>
           </div>
 
-          <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-            <div className="flex items-center gap-2 text-cyan-400 text-xs font-semibold uppercase tracking-wider mb-1">
+          <div className="rounded-lg border border-theme-border bg-theme-surface p-4">
+            <div className="flex items-center gap-2 text-theme-primary text-xs font-semibold uppercase tracking-wider mb-1">
               <Cpu className="h-4 w-4" /> Risk Engine
             </div>
-            <p className="text-xs text-slate-400">Asset correlation matrices, volatility indexing, and risk scores.</p>
+            <p className="text-xs text-theme-text-muted">Asset correlation matrices, volatility indexing, and risk scores.</p>
           </div>
 
-          <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-            <div className="flex items-center gap-2 text-amber-400 text-xs font-semibold uppercase tracking-wider mb-1">
+          <div className="rounded-lg border border-theme-border bg-theme-surface p-4">
+            <div className="flex items-center gap-2 text-theme-accent text-xs font-semibold uppercase tracking-wider mb-1">
               <Sparkles className="h-4 w-4" /> AI Insights
             </div>
-            <p className="text-xs text-slate-400">OpenAI LLM portfolio summaries, expense ratio reviews, and tips.</p>
+            <p className="text-xs text-theme-text-muted">Portfolio summaries, expense ratio reviews, and asset allocation tips.</p>
           </div>
         </div>
 
         <Link to="/dashboard">
-          <Button variant="outline" className="text-white border-slate-700 hover:bg-slate-800">
-            Return to Dashboard <ArrowRight className="ml-2 h-4 w-4" />
+          <Button variant="outline" rightIcon={<ArrowRight className="h-4 w-4" />}>
+            Back to Dashboard
           </Button>
         </Link>
       </Card>

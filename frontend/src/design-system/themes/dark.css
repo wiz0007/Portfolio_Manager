@@ -1,0 +1,79 @@
+/**
+ * Enterprise Design System — Theme: Refined Midnight Teal (Dark)
+ * Rating: 9.7 | Background: Midnight Teal | Foreground: Luminous Pearl | Accent: Electric Lime
+ */
+
+:root,
+[data-theme="dark"],
+[data-theme="theme-refined-teal"] {
+  /* Surfaces & Backgrounds */
+  --color-bg-app: var(--primitive-midnight-900);         /* #05151A */
+  --color-bg-subtle: var(--primitive-midnight-850);      /* #081C23 */
+  --color-surface-base: var(--primitive-midnight-800);   /* #0C252E */
+  --color-surface-card: var(--primitive-midnight-750);   /* #102E39 */
+  --color-surface-panel: var(--primitive-midnight-700);  /* #143946 */
+  --color-surface-dropdown: var(--primitive-midnight-750);
+  --color-surface-hover: var(--primitive-midnight-650);  /* #194655 */
+  --color-surface-active: var(--primitive-midnight-600); /* #1F576A */
+
+  /* Typography */
+  --color-text-primary: var(--primitive-pearl-100);      /* #F3FAF8 */
+  --color-text-secondary: var(--primitive-pearl-300);    /* #B2CECA */
+  --color-text-muted: var(--primitive-pearl-500);        /* #648682 */
+  --color-text-inverse: var(--primitive-midnight-900);   /* #05151A */
+
+  /* Borders */
+  --color-border-subtle: #10303B;
+  --color-border-base: #174251;
+  --color-border-strong: #1F576A;
+
+  /* Brand & Accents */
+  --color-brand-primary: var(--primitive-cyan-500);       /* #06B6D4 */
+  --color-brand-primary-hover: var(--primitive-cyan-600); /* #0891B2 */
+  --color-brand-primary-subtle: rgba(6, 182, 212, 0.15);
+  --color-brand-secondary: var(--primitive-pearl-300);   /* #B2CECA */
+  --color-brand-accent: var(--primitive-lime-500);        /* #84CC16 */
+  --color-brand-accent-hover: var(--primitive-lime-600);  /* #65A30D */
+  --color-brand-accent-subtle: rgba(132, 204, 22, 0.15);
+
+  /* Interactive States & Focus */
+  --color-focus-ring: var(--primitive-cyan-500);
+  --color-interactive-hover: var(--primitive-midnight-650);
+  --color-interactive-active: var(--primitive-midnight-600);
+
+  /* Financial Indicators */
+  --color-positive: var(--primitive-emerald-500);        /* #10B981 */
+  --color-positive-subtle: rgba(16, 185, 129, 0.15);
+  --color-positive-text: #34D399;
+
+  --color-negative: var(--primitive-rose-500);           /* #F43F5E */
+  --color-negative-subtle: rgba(244, 63, 94, 0.15);
+  --color-negative-text: #FB7185;
+
+  --color-warning: var(--primitive-amber-500);            /* #F59E0B */
+  --color-warning-subtle: rgba(245, 158, 11, 0.15);
+  --color-warning-text: #FCD34D;
+
+  --color-info: var(--primitive-blue-500);               /* #3B82F6 */
+  --color-info-subtle: rgba(59, 130, 246, 0.15);
+  --color-info-text: #93C5FD;
+
+  --color-neutral: var(--primitive-pearl-500);           /* #648682 */
+  --color-neutral-subtle: rgba(100, 134, 130, 0.15);
+
+  /* Data Visualization / Chart Series */
+  --chart-color-1: var(--primitive-cyan-500);
+  --chart-color-2: var(--primitive-lime-500);
+  --chart-color-3: var(--primitive-emerald-500);
+  --chart-color-4: #38BDF8;
+  --chart-color-5: var(--primitive-amber-500);
+  --chart-grid: #174251;
+  --chart-axis: var(--primitive-pearl-500);
+  --chart-tooltip-bg: var(--primitive-midnight-900);
+  --chart-tooltip-text: var(--primitive-pearl-100);
+
+  /* Overlays & Popovers */
+  --color-overlay: rgba(3, 11, 14, 0.82);
+  --color-popover: var(--primitive-midnight-750);
+}
+

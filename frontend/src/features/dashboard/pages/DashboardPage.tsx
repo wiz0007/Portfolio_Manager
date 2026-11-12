@@ -4,184 +4,347 @@ import {
   Briefcase,
   BarChart3,
   User,
-  ShieldCheck,
   Database,
   ArrowRight,
+  Plus,
+  Calendar,
   Sparkles,
+  AlertTriangle,
+  RotateCw,
+  ShieldCheck,
 } from 'lucide-react';
 import { useCurrentUser } from '@/features/authentication/hooks/useAuth';
 import { useDashboardOverview } from '@/features/dashboard/hooks/useDashboard';
+import { useHealthCheck } from '@/shared/hooks/useHealth';
 import { Card, CardTitle, CardDescription } from '@/shared/ui/Card';
 import { Button } from '@/shared/ui/Button';
 
 export const DashboardPage: React.FC = () => {
   const { data: currentUser } = useCurrentUser();
-  const { data: overview, isLoading } = useDashboardOverview();
+  const {
+    data: overview,
+    isLoading,
+    isError,
+    refetch,
+  } = useDashboardOverview();
+  const { data: healthData, isLoading: isHealthLoading, isError: isHealthError } = useHealthCheck();
 
-  // Prefer overview data, fall back to currentUser
   const user = overview?.user || currentUser;
-  const portfolioCount = overview?.portfolio_count ?? 0;
+
+  const formatDate = (dateStr: string) => {
+    try {
+      return new Date(dateStr).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const getDbHealthStatus = () => {
+    if (isHealthLoading) {
+      return {
+        label: 'Checking connection...',
+        color: 'text-amber-400',
+        dot: 'bg-amber-400',
+      };
+    }
+    if (isHealthError || healthData?.database !== 'connected') {
+      return {
+        label: 'Connection unavailable',
+        color: 'text-rose-400',
+        dot: 'bg-rose-400',
+      };
+    }
+    return {
+      label: 'Service connected',
+      color: 'text-emerald-400',
+      dot: 'bg-emerald-400',
+    };
+  };
+
+  const dbHealth = getDbHealthStatus();
 
   return (
     <div className="space-y-6">
       {/* Welcome Banner */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-slate-800 bg-gradient-to-r from-slate-900 via-indigo-950/30 to-slate-900 p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-theme-border bg-gradient-to-r from-theme-card via-theme-surface to-theme-card p-6 shadow-sm transition-colors duration-200">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-400 border border-emerald-500/20">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
               Active Session
             </span>
-            <span className="text-xs text-slate-400">| Neon PostgreSQL</span>
+            <span className="text-xs text-theme-text-muted flex items-center gap-1.5">
+              <span>| DB Status:</span>
+              <span className={`inline-block h-1.5 w-1.5 rounded-full ${dbHealth.dot}`} />
+              <span className={dbHealth.color}>{dbHealth.label}</span>
+            </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-theme-text">
             Welcome back, {user?.full_name || 'Investor'}!
           </h1>
-          <p className="mt-1 text-sm text-slate-400">
+          <p className="mt-1 text-sm text-theme-text-muted">
             Your investment intelligence dashboard is ready. Manage your assets and financial health in one place.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
           <Link to="/settings/profile">
-            <Button variant="outline" size="sm" className="text-slate-300 border-slate-700 hover:text-white">
+            <Button variant="outline" size="sm" className="text-theme-text border-theme-border hover:bg-theme-hover">
               <User className="mr-1.5 h-3.5 w-3.5" /> Edit Profile
             </Button>
           </Link>
-          <Link to="/portfolios">
-            <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white">
-              <Briefcase className="mr-1.5 h-3.5 w-3.5" /> View Portfolios
+          <Link to="/portfolios/new">
+            <Button size="sm" className="bg-theme-primary text-theme-text-inverse hover:bg-theme-primary-hover shadow-sm">
+              <Plus className="mr-1.5 h-3.5 w-3.5" /> New Portfolio
             </Button>
           </Link>
         </div>
       </div>
 
+      {/* API Error State Banner */}
+      {isError && (
+        <Card className="border-rose-900/40 bg-rose-950/20 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-rose-300">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-rose-400 shrink-0" />
+            <div>
+              <div className="text-sm font-semibold text-rose-200">
+                Unable to load dashboard overview
+              </div>
+              <div className="text-xs text-rose-400/90 mt-0.5">
+                A network or server error occurred while retrieving your portfolio records.
+              </div>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => refetch()}
+            className="border-rose-800 text-rose-200 hover:bg-rose-900/30 shrink-0"
+          >
+            <RotateCw className="mr-1.5 h-3.5 w-3.5" /> Retry
+          </Button>
+        </Card>
+      )}
+
       {/* Overview Stat Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card className="border-slate-800 bg-slate-900/60 p-5">
+        {/* Stat 1: Portfolios Count */}
+        <Card className="border-theme-border bg-theme-card p-5">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-theme-text-muted uppercase tracking-wider">
               Portfolios Created
             </span>
-            <Briefcase className="h-4 w-4 text-indigo-400" />
+            <Briefcase className="h-4 w-4 text-theme-primary" />
           </div>
-          <div className="mt-2 text-2xl font-bold text-white">
-            {isLoading ? <span className="text-slate-600">...</span> : portfolioCount}
+          <div className="mt-2 text-2xl font-bold text-theme-text">
+            {isLoading && !overview ? (
+              <span className="text-theme-text-muted animate-pulse">...</span>
+            ) : isError && !overview ? (
+              <span className="text-theme-text-muted">—</span>
+            ) : (
+              overview?.portfolio_count ?? 0
+            )}
           </div>
-          <p className="mt-1 text-xs text-slate-500">
-            {portfolioCount === 0 ? 'No active portfolios yet' : `${portfolioCount} connected`}
+          <p className="mt-1 text-xs text-theme-text-muted">
+            {isLoading && !overview
+              ? 'Loading active portfolios...'
+              : isError && !overview
+              ? 'Unable to load count'
+              : overview?.portfolio_count === 0
+              ? 'No active portfolios yet'
+              : `${overview?.portfolio_count} active portfolio${(overview?.portfolio_count ?? 0) > 1 ? 's' : ''}`}
           </p>
         </Card>
 
-        <Card className="border-slate-800 bg-slate-900/60 p-5">
+        {/* Stat 2: Database Connectivity */}
+        <Card className="border-theme-border bg-theme-card p-5">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Database Engine
+            <span className="text-xs font-semibold text-theme-text-muted uppercase tracking-wider">
+              Database Connectivity
             </span>
-            <Database className="h-4 w-4 text-emerald-400" />
+            <Database className={`h-4 w-4 ${dbHealth.color}`} />
           </div>
-          <div className="mt-2 text-lg font-bold text-emerald-400">
-            Neon PostgreSQL
+          <div className={`mt-2 text-lg font-bold ${dbHealth.color}`}>
+            {dbHealth.label}
           </div>
-          <p className="mt-1 text-xs text-slate-500">
-            AWS Singapore • UTC Storage
+          <p className="mt-1 text-xs text-theme-text-muted">
+            Verified backend health probe
           </p>
         </Card>
 
-        <Card className="border-slate-800 bg-slate-900/60 p-5">
+        {/* Stat 3: Security & Session Protection */}
+        <Card className="border-theme-border bg-theme-card p-5">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Security Protocol
+            <span className="text-xs font-semibold text-theme-text-muted uppercase tracking-wider">
+              Session Security
             </span>
-            <ShieldCheck className="h-4 w-4 text-cyan-400" />
+            <ShieldCheck className="h-4 w-4 text-theme-primary" />
           </div>
-          <div className="mt-2 text-lg font-bold text-cyan-300">
-            Session Cookies
+          <div className="mt-2 text-lg font-bold text-theme-text">
+            Active Session
           </div>
-          <p className="mt-1 text-xs text-slate-500">
-            HTTP-only • CSRF Enforced
+          <p className="mt-1 text-xs text-theme-text-muted">
+            HTTP-only cookies & CSRF verification
           </p>
         </Card>
       </div>
 
       {/* Main Content Grid: Portfolios & Analytics Preview */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Portfolio Section with Empty State */}
-        <Card className="border-slate-800 bg-slate-900/60 p-6 flex flex-col justify-between">
+        {/* Portfolio Section */}
+        <Card className="border-theme-border bg-theme-card p-6 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <CardTitle className="text-lg font-semibold text-white">Your Portfolios</CardTitle>
-                <CardDescription className="text-xs text-slate-400">
-                  Real-time multi-asset portfolio status
+                <CardTitle className="text-lg font-semibold text-theme-text">Your Portfolios</CardTitle>
+                <CardDescription className="text-xs text-theme-text-muted">
+                  Real user portfolio containers
                 </CardDescription>
               </div>
-              <span className="rounded bg-slate-800 px-2 py-1 text-[11px] font-medium text-slate-400">
-                Total: {portfolioCount}
-              </span>
+              <div className="flex items-center gap-2">
+                {overview && (
+                  <span className="rounded bg-theme-surface px-2 py-1 text-[11px] font-medium text-theme-text-secondary border border-theme-border">
+                    Total: {overview.portfolio_count}
+                  </span>
+                )}
+                <Link to="/portfolios">
+                  <Button variant="ghost" size="sm" className="text-xs text-theme-primary hover:bg-theme-hover p-1">
+                    View All &rarr;
+                  </Button>
+                </Link>
+              </div>
             </div>
 
-            {/* Empty State per Sprint 2 ERD Section 6.2 */}
-            <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/50 p-8 text-center my-4">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-slate-800/80 text-slate-400 mb-3">
-                <Briefcase className="h-6 w-6" />
+            {/* Loading State Skeleton */}
+            {isLoading && !overview && (
+              <div className="space-y-3 my-4">
+                {[1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="p-3.5 rounded-lg bg-theme-surface/60 border border-theme-border animate-pulse h-16"
+                  />
+                ))}
               </div>
-              <h3 className="text-sm font-semibold text-white mb-1">
-                You haven't created a portfolio yet
-              </h3>
-              <p className="mx-auto max-w-sm text-xs text-slate-400 mb-4">
-                Portfolio management and multi-asset tracking across stocks, crypto, and funds will be available in the upcoming Sprint 3 release.
-              </p>
-              <Link to="/portfolios">
-                <Button size="sm" variant="outline" className="text-slate-300 border-slate-700 hover:text-white">
-                  Preview Upcoming Features <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+            )}
+
+            {/* Error State when no cached overview exists */}
+            {isError && !overview && (
+              <div className="rounded-xl border border-rose-900/30 bg-rose-950/20 p-6 text-center my-4">
+                <AlertTriangle className="h-6 w-6 text-rose-400 mx-auto mb-2" />
+                <h3 className="text-sm font-semibold text-rose-200 mb-1">
+                  Failed to load portfolios
+                </h3>
+                <p className="text-xs text-rose-400/90 mb-3">
+                  Could not retrieve your portfolio data. Please check your connection and try again.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => refetch()}
+                  className="border-rose-800 text-rose-200 hover:bg-rose-900/30"
+                >
+                  <RotateCw className="mr-1.5 h-3.5 w-3.5" /> Retry
                 </Button>
-              </Link>
-            </div>
+              </div>
+            )}
+
+            {/* Empty State: Only when successfully loaded with 0 portfolios */}
+            {overview && overview.portfolio_count === 0 && (
+              <div className="rounded-xl border border-dashed border-theme-border bg-theme-surface/50 p-8 text-center my-4">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-theme-surface text-theme-text-muted mb-3 border border-theme-border">
+                  <Briefcase className="h-6 w-6" />
+                </div>
+                <h3 className="text-sm font-semibold text-theme-text mb-1">
+                  You haven't created a portfolio yet
+                </h3>
+                <p className="mx-auto max-w-sm text-xs text-theme-text-muted mb-4">
+                  Create your first portfolio to start organizing your investment containers and currency allocations.
+                </p>
+                <Link to="/portfolios/new">
+                  <Button size="sm" className="bg-theme-primary text-theme-text-inverse hover:bg-theme-primary-hover shadow-sm">
+                    <Plus className="mr-1.5 h-3.5 w-3.5" /> Create Portfolio
+                  </Button>
+                </Link>
+              </div>
+            )}
+
+            {/* Recent Portfolios List: Only when overview has portfolios */}
+            {overview && overview.portfolio_count > 0 && (
+              <div className="space-y-3 my-4">
+                {overview.recent_portfolios.map((portfolio) => (
+                  <Link
+                    key={portfolio.id}
+                    to={`/portfolios/${portfolio.id}`}
+                    className="flex items-center justify-between p-3.5 rounded-lg bg-theme-surface border border-theme-border hover:border-theme-primary/50 transition-colors group"
+                  >
+                    <div className="min-w-0 pr-3">
+                      <div className="text-sm font-medium text-theme-text group-hover:text-theme-primary transition-colors truncate">
+                        {portfolio.name}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-theme-text-muted mt-0.5">
+                        <Calendar className="h-3 w-3" />
+                        <span>Created {formatDate(portfolio.created_at)}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="px-2 py-0.5 rounded text-xs font-mono font-medium bg-theme-primary-subtle text-theme-primary border border-theme-primary/30">
+                        {portfolio.base_currency}
+                      </span>
+                      <ArrowRight className="h-3.5 w-3.5 text-theme-text-muted group-hover:text-theme-primary transition-colors" />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div className="pt-2 text-[11px] text-slate-500 border-t border-slate-800/80 flex items-center justify-between">
-            <span>Sprint 2 Baseline: Zero mock financial records</span>
-            <span className="text-indigo-400 font-medium">Sprint 3 Foundation</span>
+          <div className="pt-2 text-[11px] text-theme-text-muted border-t border-theme-border flex items-center justify-between">
+            <span>Actual PostgreSQL portfolio records</span>
+            <Link to="/portfolios/new" className="text-theme-primary hover:underline font-medium">
+              + New Portfolio
+            </Link>
           </div>
         </Card>
 
-        {/* Analytics Section (Sprint 4 Preview) */}
-        <Card className="border-slate-800 bg-slate-900/60 p-6 flex flex-col justify-between">
+        {/* Analytics Section (Sprint 5 Roadmap) */}
+        <Card className="border-theme-border bg-theme-card p-6 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <CardTitle className="text-lg font-semibold text-white">Performance Analytics</CardTitle>
-                <CardDescription className="text-xs text-slate-400">
+                <CardTitle className="text-lg font-semibold text-theme-text">Performance Analytics</CardTitle>
+                <CardDescription className="text-xs text-theme-text-muted">
                   CAGR, XIRR, risk engine and AI insights
                 </CardDescription>
               </div>
-              <span className="rounded bg-purple-950/60 border border-purple-500/30 px-2 py-0.5 text-[11px] font-medium text-purple-300 flex items-center gap-1">
-                <Sparkles className="h-3 w-3" /> Sprint 4
+              <span className="rounded bg-theme-accent-subtle border border-theme-accent/30 px-2 py-0.5 text-[11px] font-medium text-theme-accent flex items-center gap-1">
+                <Sparkles className="h-3 w-3" /> Upcoming
               </span>
             </div>
 
-            <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/50 p-8 text-center my-4">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-purple-900/20 text-purple-400 border border-purple-500/30 mb-3">
+            <div className="rounded-xl border border-dashed border-theme-border bg-theme-surface/50 p-8 text-center my-4">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-theme-accent-subtle text-theme-accent border border-theme-accent/30 mb-3">
                 <BarChart3 className="h-6 w-6" />
               </div>
-              <h3 className="text-sm font-semibold text-white mb-1">
+              <h3 className="text-sm font-semibold text-theme-text mb-1">
                 Financial Analytics & Intelligence
               </h3>
-              <p className="mx-auto max-w-sm text-xs text-slate-400 mb-4">
-                Detailed CAGR calculations, benchmark comparisons, and OpenAI LLM financial recommendations are scheduled for Sprint 4.
+              <p className="mx-auto max-w-sm text-xs text-theme-text-muted mb-4">
+                Detailed CAGR calculations, benchmark comparisons, holdings performance, and AI-assisted financial recommendations are scheduled for the next release.
               </p>
               <Link to="/analytics">
-                <Button size="sm" variant="outline" className="text-purple-300 border-purple-800/50 hover:bg-purple-950/40">
+                <Button size="sm" variant="outline" className="text-theme-text border-theme-border hover:bg-theme-hover">
                   Explore Analytics Roadmap <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                 </Button>
               </Link>
             </div>
           </div>
 
-          <div className="pt-2 text-[11px] text-slate-500 border-t border-slate-800/80 flex items-center justify-between">
-            <span>OpenAI free API key integration planned</span>
-            <span className="text-purple-400 font-medium">Sprint 4 Roadmap</span>
+          <div className="pt-2 text-[11px] text-theme-text-muted border-t border-theme-border flex items-center justify-between">
+            <span>MVP Foundation Ready</span>
+            <span className="text-theme-accent font-medium">Sprint 5 Scope</span>
           </div>
         </Card>
       </div>

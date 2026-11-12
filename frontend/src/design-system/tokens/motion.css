@@ -1,0 +1,44 @@
+/**
+ * Enterprise Design System — Motion & Transition Tokens
+ */
+
+:root {
+  /* Durations */
+  --motion-duration-fast: 150ms;
+  --motion-duration-normal: 200ms;
+  --motion-duration-slow: 300ms;
+  --motion-duration-extra-slow: 500ms;
+
+  /* Easing curves */
+  --motion-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --motion-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --motion-ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Transitions */
+  --transition-all: all var(--motion-duration-normal) var(--motion-ease-standard);
+  --transition-colors: color var(--motion-duration-normal) var(--motion-ease-standard),
+                       background-color var(--motion-duration-normal) var(--motion-ease-standard),
+                       border-color var(--motion-duration-normal) var(--motion-ease-standard);
+  --transition-transform: transform var(--motion-duration-normal) var(--motion-ease-standard);
+  --transition-opacity: opacity var(--motion-duration-normal) var(--motion-ease-standard);
+  --transition-shadow: box-shadow var(--motion-duration-normal) var(--motion-ease-standard);
+
+  /* Theme Switch Cross-Fade Transition */
+  --theme-transition: background-color var(--motion-duration-normal) var(--motion-ease-standard),
+                      border-color var(--motion-duration-normal) var(--motion-ease-standard),
+                      color var(--motion-duration-normal) var(--motion-ease-standard);
+}
+
+/* Reduced Motion Override for Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+

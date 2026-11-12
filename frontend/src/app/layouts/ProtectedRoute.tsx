@@ -9,11 +9,11 @@ export const ProtectedRoute: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-900 text-white">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600 shadow-xl shadow-indigo-600/30 animate-pulse mb-4">
-          <TrendingUp className="h-7 w-7 text-white" />
+      <div className="flex min-h-screen flex-col items-center justify-center bg-theme-bg text-theme-text">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-theme-primary text-theme-text-inverse shadow-lg animate-pulse mb-4">
+          <TrendingUp className="h-7 w-7" />
         </div>
-        <p className="text-sm font-medium text-slate-400">Verifying authentication...</p>
+        <p className="text-sm font-medium text-theme-text-muted">Verifying authentication...</p>
       </div>
     );
   }
@@ -24,4 +24,3 @@ export const ProtectedRoute: React.FC = () => {
 
   return <Outlet />;
 };
-

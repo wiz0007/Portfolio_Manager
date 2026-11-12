@@ -15,15 +15,15 @@ export const Alert: React.FC<AlertProps> = ({
   ...props
 }) => {
   const icons = {
-    error: <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />,
-    success: <CheckCircle className="h-5 w-5 text-emerald-600 flex-shrink-0" />,
-    info: <Info className="h-5 w-5 text-blue-600 flex-shrink-0" />,
+    error: <AlertCircle className="h-5 w-5 text-rose-400 shrink-0" />,
+    success: <CheckCircle className="h-5 w-5 text-emerald-400 shrink-0" />,
+    info: <Info className="h-5 w-5 text-cyan-400 shrink-0" />,
   };
 
   const variants = {
-    error: 'border-red-200 bg-red-50 text-red-900',
-    success: 'border-emerald-200 bg-emerald-50 text-emerald-900',
-    info: 'border-blue-200 bg-blue-50 text-blue-900',
+    error: 'border-rose-500/30 bg-rose-500/10 text-rose-300',
+    success: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+    info: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300',
   };
 
   return (
@@ -34,10 +34,9 @@ export const Alert: React.FC<AlertProps> = ({
     >
       {icons[variant]}
       <div className="space-y-1">
-        {title && <h5 className="font-semibold">{title}</h5>}
+        {title && <h5 className="font-semibold text-theme-text">{title}</h5>}
         <div className="text-xs leading-relaxed">{children}</div>
       </div>
     </div>
   );
 };
-

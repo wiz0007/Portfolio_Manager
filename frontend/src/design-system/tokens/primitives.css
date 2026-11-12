@@ -1,0 +1,80 @@
+/**
+ * Enterprise Design System — Primitive Color Tokens
+ * Static values representing the raw palettes for Warm Ivory and Midnight Teal
+ */
+
+:root {
+  /* =========================================================================
+   * Warm Ivory & Atlas Navy Palette (Light Theme Foundations)
+   * ========================================================================= */
+  --primitive-ivory-50: #FCFBF9;
+  --primitive-ivory-100: #FAF8F5;
+  --primitive-ivory-200: #F3EFEA;
+  --primitive-ivory-300: #EBE5DC;
+  --primitive-ivory-400: #E4DDD3;
+  --primitive-ivory-500: #D8CEBE;
+
+  --primitive-atlas-100: #EBF0F5;
+  --primitive-atlas-200: #C7D5E4;
+  --primitive-atlas-600: #1B3F64;
+  --primitive-atlas-700: #152E4D;
+  --primitive-atlas-800: #0F243A;
+  --primitive-atlas-900: #091726;
+
+  --primitive-gold-100: #FDF7E7;
+  --primitive-gold-300: #F3D98A;
+  --primitive-gold-400: #D4AB3A;
+  --primitive-gold-500: #C59B27;
+  --primitive-gold-600: #A8811A;
+
+  /* =========================================================================
+   * Refined Midnight Teal & Lime Palette (Dark Theme Foundations)
+   * ========================================================================= */
+  --primitive-midnight-950: #030D10;
+  --primitive-midnight-900: #05151A;
+  --primitive-midnight-850: #081C23;
+  --primitive-midnight-800: #0C252E;
+  --primitive-midnight-750: #102E39;
+  --primitive-midnight-700: #143946;
+  --primitive-midnight-650: #194655;
+  --primitive-midnight-600: #1F576A;
+
+  --primitive-cyan-300: #67E8F9;
+  --primitive-cyan-400: #22D3EE;
+  --primitive-cyan-500: #06B6D4;
+  --primitive-cyan-600: #0891B2;
+  --primitive-cyan-700: #0E7490;
+
+  --primitive-pearl-50: #F8FAF9;
+  --primitive-pearl-100: #F3FAF8;
+  --primitive-pearl-200: #E0EFEB;
+  --primitive-pearl-300: #B2CECA;
+  --primitive-pearl-400: #88AAA5;
+  --primitive-pearl-500: #648682;
+
+  --primitive-lime-300: #BEF264;
+  --primitive-lime-400: #A3E635;
+  --primitive-lime-500: #84CC16;
+  --primitive-lime-600: #65A30D;
+
+  /* =========================================================================
+   * Financial & Status Primitives
+   * ========================================================================= */
+  --primitive-emerald-500: #10B981;
+  --primitive-emerald-600: #059669;
+  --primitive-emerald-700: #047857;
+
+  --primitive-rose-500: #F43F5E;
+  --primitive-rose-600: #E11D48;
+  --primitive-rose-700: #BE123C;
+
+  --primitive-amber-500: #F59E0B;
+  --primitive-amber-600: #D97706;
+
+  --primitive-blue-500: #3B82F6;
+  --primitive-blue-600: #2563EB;
+
+  --primitive-neutral-white: #FFFFFF;
+  --primitive-neutral-black: #000000;
+}
+

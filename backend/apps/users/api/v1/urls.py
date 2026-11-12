@@ -6,6 +6,8 @@ from apps.users.api.v1.views import (
     LoginView,
     LogoutView,
     RegisterView,
+    ResendVerificationView,
+    VerifyEmailView,
 )
 
 app_name = 'users_api_v1'
@@ -16,4 +18,6 @@ urlpatterns = [
     path('login/', LoginView.as_view(), name='auth-login'),
     path('logout/', LogoutView.as_view(), name='auth-logout'),
     path('me/', CurrentUserView.as_view(), name='auth-me'),
+    path('verify-email/', VerifyEmailView.as_view(), name='auth-verify-email'),
+    path('resend-verification/', ResendVerificationView.as_view(), name='auth-resend-verification'),
 ]

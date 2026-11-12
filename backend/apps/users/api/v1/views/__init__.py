@@ -4,6 +4,8 @@ from .auth import (
     LoginView,
     LogoutView,
     RegisterView,
+    ResendVerificationView,
+    VerifyEmailView,
 )
 
 __all__ = [
@@ -12,4 +14,6 @@ __all__ = [
     'LoginView',
     'LogoutView',
     'RegisterView',
+    'ResendVerificationView',
+    'VerifyEmailView',
 ]
