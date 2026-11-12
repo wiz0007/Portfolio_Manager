@@ -55,30 +55,30 @@ export const AccountPage: React.FC = () => {
   return (
     <div className="space-y-6 max-w-4xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-white">Account Settings</h1>
-        <p className="text-sm text-slate-400">
+        <h1 className="text-2xl font-bold tracking-tight text-theme-text">Account Settings</h1>
+        <p className="text-sm text-theme-text-muted">
           Manage your account security, authentication credentials, and active sessions.
         </p>
       </div>
 
       {/* Account Overview Card */}
-      <Card className="border-slate-800 bg-slate-900/60 p-6">
-        <CardTitle className="text-lg text-white mb-1">Account & Verification Status</CardTitle>
-        <CardDescription className="text-xs text-slate-400 mb-6">
+      <Card className="border-theme-border bg-theme-card p-6">
+        <CardTitle className="text-lg text-theme-text mb-1">Account & Verification Status</CardTitle>
+        <CardDescription className="text-xs text-theme-text-muted mb-6">
           Real system verification and credential status.
         </CardDescription>
 
         <div className="space-y-4">
           {/* Registered Email & Verification */}
-          <div className="p-4 rounded-lg bg-slate-950/60 border border-slate-800 space-y-3">
+          <div className="p-4 rounded-lg bg-theme-surface border border-theme-border space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <Mail className="h-5 w-5 text-indigo-400" />
+                <Mail className="h-5 w-5 text-theme-primary" />
                 <div>
-                  <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  <div className="text-xs font-semibold text-theme-text-muted uppercase tracking-wider">
                     Registered Email
                   </div>
-                  <div className="text-sm font-medium text-white">{user?.email}</div>
+                  <div className="text-sm font-medium text-theme-text">{user?.email}</div>
                 </div>
               </div>
               <div>
@@ -96,7 +96,7 @@ export const AccountPage: React.FC = () => {
 
             {/* Unverified Action State */}
             {!isEmailVerified && (
-              <div className="pt-2 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="pt-2 border-t border-theme-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="text-xs text-amber-300/90">
                   Your email is unverified. Please verify to ensure uninterrupted account access.
                 </div>
@@ -127,14 +127,14 @@ export const AccountPage: React.FC = () => {
           </div>
 
           {/* Account Activation Status */}
-          <div className="flex items-center justify-between p-4 rounded-lg bg-slate-950/60 border border-slate-800">
+          <div className="flex items-center justify-between p-4 rounded-lg bg-theme-surface border border-theme-border">
             <div className="flex items-center gap-3">
-              <Shield className="h-5 w-5 text-cyan-400" />
+              <Shield className="h-5 w-5 text-theme-primary" />
               <div>
-                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                <div className="text-xs font-semibold text-theme-text-muted uppercase tracking-wider">
                   Account Activation
                 </div>
-                <div className="text-sm font-medium text-white">
+                <div className="text-sm font-medium text-theme-text">
                   {isActive ? 'Account Active' : 'Account Suspended'}
                 </div>
               </div>
@@ -159,36 +159,36 @@ export const AccountPage: React.FC = () => {
           </div>
 
           {/* Session Authentication Info */}
-          <div className="flex items-center justify-between p-4 rounded-lg bg-slate-950/60 border border-slate-800">
+          <div className="flex items-center justify-between p-4 rounded-lg bg-theme-surface border border-theme-border">
             <div className="flex items-center gap-3">
-              <Shield className="h-5 w-5 text-indigo-400" />
+              <Shield className="h-5 w-5 text-theme-primary" />
               <div>
-                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                <div className="text-xs font-semibold text-theme-text-muted uppercase tracking-wider">
                   Session Authentication
                 </div>
-                <div className="text-sm font-medium text-white">HTTP-Only Cookie with CSRF Defense</div>
+                <div className="text-sm font-medium text-theme-text">HTTP-Only Cookie with CSRF Defense</div>
               </div>
             </div>
-            <span className="text-xs text-slate-400 font-mono">sessionid active</span>
+            <span className="text-xs text-theme-text-muted font-mono">sessionid active</span>
           </div>
         </div>
       </Card>
 
       {/* Security & Password Policy Card */}
-      <Card className="border-slate-800 bg-slate-900/60 p-6">
-        <CardTitle className="text-lg text-white mb-1">Password & Authentication</CardTitle>
-        <CardDescription className="text-xs text-slate-400 mb-6">
+      <Card className="border-theme-border bg-theme-card p-6">
+        <CardTitle className="text-lg text-theme-text mb-1">Password & Authentication</CardTitle>
+        <CardDescription className="text-xs text-theme-text-muted mb-6">
           Password hashing uses PBKDF2 with SHA256 iterations.
         </CardDescription>
 
-        <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4 space-y-3">
+        <div className="rounded-lg border border-theme-border bg-theme-surface p-4 space-y-3">
           <div className="flex items-start gap-3">
-            <Info className="h-5 w-5 text-indigo-400 shrink-0 mt-0.5" />
+            <Info className="h-5 w-5 text-theme-primary shrink-0 mt-0.5" />
             <div>
-              <div className="text-sm font-medium text-white">
+              <div className="text-sm font-medium text-theme-text">
                 Password Rotation & Multi-Factor Security
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-theme-text-muted mt-0.5">
                 Self-service password changes and multi-factor authentication are scheduled for subsequent security increments.
               </p>
             </div>
@@ -197,16 +197,16 @@ export const AccountPage: React.FC = () => {
       </Card>
 
       {/* Session Management & Logout */}
-      <Card className="border-rose-950/40 bg-slate-900/60 p-6">
-        <CardTitle className="text-lg text-white mb-1">Session Management</CardTitle>
-        <CardDescription className="text-xs text-slate-400 mb-4">
+      <Card className="border-theme-border bg-theme-card p-6">
+        <CardTitle className="text-lg text-theme-text mb-1">Session Management</CardTitle>
+        <CardDescription className="text-xs text-theme-text-muted mb-4">
           Terminate your current authenticated session and flush session cookies.
         </CardDescription>
 
-        <div className="flex items-center justify-between p-4 rounded-lg bg-slate-950/60 border border-slate-800">
+        <div className="flex items-center justify-between p-4 rounded-lg bg-theme-surface border border-theme-border">
           <div>
-            <div className="text-sm font-medium text-white">Sign Out from this Browser</div>
-            <div className="text-xs text-slate-500">
+            <div className="text-sm font-medium text-theme-text">Sign Out from this Browser</div>
+            <div className="text-xs text-theme-text-muted">
               Clears the session cookie from the browser and destroys the server-side session.
             </div>
           </div>
@@ -215,7 +215,7 @@ export const AccountPage: React.FC = () => {
             variant="danger"
             onClick={handleLogout}
             disabled={isLoggingOut}
-            className="bg-rose-600 hover:bg-rose-700 text-white shrink-0 ml-4"
+            className="bg-rose-600 hover:bg-rose-700 text-white shrink-0 ml-4 shadow-sm"
           >
             <LogOut className="mr-2 h-4 w-4" />
             {isLoggingOut ? 'Signing out...' : 'Sign Out'}

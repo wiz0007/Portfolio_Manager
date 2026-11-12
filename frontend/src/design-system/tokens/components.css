@@ -1,0 +1,65 @@
+/**
+ * Enterprise Design System — Component-Level Tokens
+ * Specialized tokens mapped from semantic variables for component customization
+ */
+
+:root {
+  /* Button Component Tokens */
+  --btn-height-sm: var(--density-control-height-sm);
+  --btn-height-md: var(--density-control-height-md);
+  --btn-height-lg: var(--density-control-height-lg);
+  --btn-padding-x-sm: var(--space-3);
+  --btn-padding-x-md: var(--space-4);
+  --btn-padding-x-lg: var(--space-6);
+  --btn-radius: var(--radius-lg);
+  --btn-font-weight: var(--font-weight-medium);
+
+  /* Input Component Tokens */
+  --input-height-sm: var(--density-control-height-sm);
+  --input-height-md: var(--density-control-height-md);
+  --input-height-lg: var(--density-control-height-lg);
+  --input-bg: var(--color-surface-base);
+  --input-border: var(--color-border-base);
+  --input-border-hover: var(--color-border-strong);
+  --input-border-focus: var(--color-brand-primary);
+  --input-text: var(--color-text-primary);
+  --input-placeholder: var(--color-text-muted);
+  --input-radius: var(--radius-lg);
+
+  /* Card Component Tokens */
+  --card-bg: var(--color-surface-card);
+  --card-border: var(--color-border-subtle);
+  --card-radius: var(--radius-xl);
+  --card-shadow: var(--shadow-sm);
+  --card-padding: var(--space-6);
+
+  /* Table Component Tokens */
+  --table-header-bg: var(--color-bg-subtle);
+  --table-header-text: var(--color-text-muted);
+  --table-row-bg: transparent;
+  --table-row-hover: var(--color-surface-hover);
+  --table-border: var(--color-border-subtle);
+  --table-cell-padding-y: var(--density-table-cell-padding-y);
+  --table-cell-padding-x: var(--density-table-cell-padding-x);
+
+  /* Dialog / Modal Tokens */
+  --dialog-bg: var(--color-surface-panel);
+  --dialog-border: var(--color-border-strong);
+  --dialog-radius: var(--radius-2xl);
+  --dialog-shadow: var(--shadow-modal);
+  --dialog-backdrop: var(--color-overlay);
+
+  /* Dropdown Tokens */
+  --dropdown-bg: var(--color-surface-dropdown);
+  --dropdown-border: var(--color-border-base);
+  --dropdown-radius: var(--radius-xl);
+  --dropdown-shadow: var(--shadow-dropdown);
+
+  /* Badge Tokens */
+  --badge-radius: var(--radius-full);
+  --badge-padding-x: var(--space-2-5);
+  --badge-padding-y: var(--space-0-5);
+  --badge-font-size: var(--font-size-xs);
+  --badge-font-weight: var(--font-weight-semibold);
+}
+

@@ -1,0 +1,20 @@
+.label {
+  display: inline-block;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-1-5);
+  user-select: none;
+}
+
+.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.requiredIndicator {
+  color: var(--color-negative);
+  margin-left: var(--space-1);
+}
+

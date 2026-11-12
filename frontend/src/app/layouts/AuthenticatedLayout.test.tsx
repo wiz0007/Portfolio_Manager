@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthenticatedLayout } from './AuthenticatedLayout';
+import { ThemeProvider } from '@/app/providers';
 import * as authHooks from '@/features/authentication/hooks/useAuth';
 import * as healthHooks from '@/shared/hooks/useHealth';
 
@@ -22,15 +23,17 @@ const renderLayout = (initialRoute = '/dashboard') => {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialRoute]}>
-        <Routes>
-          <Route element={<AuthenticatedLayout />}>
-            <Route path="/dashboard" element={<div>Dashboard Content</div>} />
-            <Route path="/portfolios" element={<div>Portfolios Content</div>} />
-            <Route path="/settings/profile" element={<div>Profile Content</div>} />
-          </Route>
-        </Routes>
-      </MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={[initialRoute]}>
+          <Routes>
+            <Route element={<AuthenticatedLayout />}>
+              <Route path="/dashboard" element={<div>Dashboard Content</div>} />
+              <Route path="/portfolios" element={<div>Portfolios Content</div>} />
+              <Route path="/settings/profile" element={<div>Profile Content</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 };

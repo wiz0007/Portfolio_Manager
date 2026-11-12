@@ -62,8 +62,8 @@ export const PortfolioEditPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="py-20 flex flex-col items-center justify-center text-slate-400">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-500 mb-2" />
+      <div className="py-20 flex flex-col items-center justify-center text-theme-text-muted">
+        <Loader2 className="h-8 w-8 animate-spin text-theme-primary mb-2" />
         <p className="text-sm">Loading portfolio...</p>
       </div>
     );
@@ -72,12 +72,12 @@ export const PortfolioEditPage: React.FC = () => {
   if (isError || !portfolio) {
     return (
       <div className="max-w-md mx-auto text-center py-16 space-y-4">
-        <h2 className="text-lg font-semibold text-white">Portfolio not found</h2>
-        <p className="text-xs text-slate-400">
+        <h2 className="text-lg font-semibold text-theme-text">Portfolio not found</h2>
+        <p className="text-xs text-theme-text-muted">
           The requested portfolio does not exist or you do not have permission to edit it.
         </p>
         <Link to="/portfolios">
-          <Button variant="outline" className="border-slate-800 text-slate-300">
+          <Button variant="outline" className="border-theme-border text-theme-text">
             Back to Portfolios
           </Button>
         </Link>
@@ -91,20 +91,20 @@ export const PortfolioEditPage: React.FC = () => {
       <div>
         <Link
           to={`/portfolios/${id}`}
-          className="inline-flex items-center text-xs font-medium text-slate-400 hover:text-white transition-colors"
+          className="inline-flex items-center text-xs font-medium text-theme-text-muted hover:text-theme-text transition-colors"
         >
           <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Back to Portfolio Details
         </Link>
       </div>
 
-      <Card className="border-slate-800 bg-slate-900/60 p-6 sm:p-8 backdrop-blur">
+      <Card className="border-theme-border bg-theme-card p-6 sm:p-8 backdrop-blur shadow-sm">
         <div className="flex items-center gap-3 mb-6">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600/10 text-indigo-400 border border-indigo-500/20">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-theme-primary-subtle text-theme-primary border border-theme-primary/30">
             <Edit2 className="h-5 w-5" />
           </div>
           <div>
-            <CardTitle className="text-xl text-white">Edit Portfolio</CardTitle>
-            <CardDescription className="text-xs text-slate-400">
+            <CardTitle className="text-xl text-theme-text">Edit Portfolio</CardTitle>
+            <CardDescription className="text-xs text-theme-text-muted">
               Update portfolio name, currency, or allocation notes.
             </CardDescription>
           </div>
@@ -119,75 +119,77 @@ export const PortfolioEditPage: React.FC = () => {
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
           {/* Portfolio Name */}
           <div className="space-y-1.5">
-            <Label htmlFor="name" className="text-xs font-semibold text-slate-300">
-              Portfolio Name <span className="text-rose-400">*</span>
+            <Label htmlFor="name" className="text-xs font-semibold text-theme-text-secondary">
+              Portfolio Name <span className="text-theme-negative">*</span>
             </Label>
             <Input
               id="name"
+              placeholder="e.g. Long Term Investments"
               {...register('name')}
-              className="bg-slate-950/60 border-slate-800 text-white"
+              className="bg-theme-surface border-theme-border text-theme-text"
             />
             {errors.name && (
-              <p className="text-xs text-rose-400">{errors.name.message}</p>
+              <p className="text-xs text-theme-negative">{errors.name.message}</p>
             )}
           </div>
 
           {/* Base Currency */}
           <div className="space-y-1.5">
-            <Label htmlFor="base_currency" className="text-xs font-semibold text-slate-300">
-              Base Currency <span className="text-rose-400">*</span>
+            <Label htmlFor="base_currency" className="text-xs font-semibold text-theme-text-secondary">
+              Base Currency <span className="text-theme-negative">*</span>
             </Label>
             <select
               id="base_currency"
               {...register('base_currency')}
-              className="w-full rounded-md border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full rounded-md border border-theme-border bg-theme-surface px-3 py-2 text-sm text-theme-text focus:outline-none focus:ring-2 focus:ring-theme-primary"
             >
               {SUPPORTED_CURRENCIES.map((curr) => (
-                <option key={curr.code} value={curr.code} className="bg-slate-900 text-white">
+                <option key={curr.code} value={curr.code} className="bg-theme-card text-theme-text">
                   {curr.code} — {curr.name} ({curr.symbol})
                 </option>
               ))}
             </select>
             {errors.base_currency && (
-              <p className="text-xs text-rose-400">{errors.base_currency.message}</p>
+              <p className="text-xs text-theme-negative">{errors.base_currency.message}</p>
             )}
           </div>
 
           {/* Description */}
           <div className="space-y-1.5">
-            <Label htmlFor="description" className="text-xs font-semibold text-slate-300">
-              Description <span className="text-slate-500 font-normal">(optional)</span>
+            <Label htmlFor="description" className="text-xs font-semibold text-theme-text-secondary">
+              Description <span className="text-theme-text-muted font-normal">(optional)</span>
             </Label>
             <textarea
               id="description"
               rows={3}
+              placeholder="Investment notes..."
               {...register('description')}
-              className="w-full rounded-md border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              className="w-full rounded-md border border-theme-border bg-theme-surface px-3 py-2 text-sm text-theme-text placeholder:text-theme-text-muted focus:outline-none focus:ring-2 focus:ring-theme-primary resize-none"
             />
             {errors.description && (
-              <p className="text-xs text-rose-400">{errors.description.message}</p>
+              <p className="text-xs text-theme-negative">{errors.description.message}</p>
             )}
           </div>
 
           {/* Buttons */}
-          <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-800">
+          <div className="pt-4 flex items-center justify-end gap-3 border-t border-theme-border">
             <Button
               type="button"
               variant="outline"
               onClick={() => navigate(`/portfolios/${id}`)}
               disabled={isPending}
-              className="border-slate-800 text-slate-400 hover:text-white"
+              className="border-theme-border text-theme-text-muted hover:text-theme-text"
             >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={isPending}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              className="bg-theme-primary text-theme-text-inverse hover:bg-theme-primary-hover shadow-sm"
             >
               {isPending ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Updating...
                 </>
               ) : (
                 'Save Changes'
