@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { registerSchema, loginSchema } from './authSchemas';
+import { registerSchema, loginSchema, forgotPasswordSchema } from './authSchemas';
 
 describe('authSchemas', () => {
   describe('loginSchema', () => {
@@ -81,6 +81,35 @@ describe('authSchemas', () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.errors[0].message).toBe('Full name must be at least 2 characters');
+      }
+    });
+  });
+
+  describe('forgotPasswordSchema', () => {
+    it('should validate valid email', () => {
+      const result = forgotPasswordSchema.safeParse({
+        email: 'user@example.com',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should fail on empty email', () => {
+      const result = forgotPasswordSchema.safeParse({
+        email: '',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.errors[0].message).toBe('Email is required');
+      }
+    });
+
+    it('should fail on invalid email format', () => {
+      const result = forgotPasswordSchema.safeParse({
+        email: 'invalid-email-format',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.errors[0].message).toBe('Please enter a valid email address');
       }
     });
   });

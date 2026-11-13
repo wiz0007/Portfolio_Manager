@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
-import { CheckCircle2, AlertCircle, Clock, Loader2, ArrowRight, TrendingUp } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Clock, Loader2, ArrowRight } from 'lucide-react';
 import { useVerifyEmail, useResendVerification, useCurrentUser } from '../hooks/useAuth';
 import { Button } from '@/shared/ui/Button';
 import { Input } from '@/shared/ui/Input';
 import { Card, CardTitle, CardDescription } from '@/shared/ui/Card';
-import { ThemeToggle } from '@/design-system';
 
 export const VerifyEmailPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -72,24 +71,9 @@ export const VerifyEmailPage: React.FC = () => {
   };
 
   return (
-    <div className="relative min-h-screen bg-theme-bg text-theme-text flex flex-col justify-center items-center p-4 transition-colors duration-200">
-      {/* Top Right Floating Theme Switcher */}
-      <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-10">
-        <ThemeToggle />
-      </div>
-
-      <div className="w-full max-w-md space-y-6">
-        {/* Brand Header */}
-        <div className="flex flex-col items-center text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-theme-primary text-theme-text-inverse shadow-md mb-3">
-            <TrendingUp className="h-6 w-6" />
-          </div>
-          <h1 className="text-xl font-bold tracking-tight text-theme-text">Portfolio Manager</h1>
-          <p className="text-xs text-theme-text-muted mt-1">Email Verification</p>
-        </div>
-
-        <Card className="border-theme-border bg-theme-card text-theme-text p-6 sm:p-8 shadow-xl backdrop-blur-md">
-          {/* State: Verifying */}
+    <div className="w-full max-w-[420px]">
+      <Card className="border-theme-border bg-theme-card text-theme-text p-6 sm:p-7 shadow-lg backdrop-blur-md">
+        {/* State: Verifying */}
           {(state === 'verifying' || isVerifying) && (
             <div className="text-center py-6 space-y-4">
               <Loader2 className="h-10 w-10 text-theme-primary animate-spin mx-auto" />
@@ -262,7 +246,6 @@ export const VerifyEmailPage: React.FC = () => {
             </div>
           )}
         </Card>
-      </div>
     </div>
   );
 };

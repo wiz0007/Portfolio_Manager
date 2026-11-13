@@ -20,8 +20,10 @@ describe('LoginPage', () => {
     renderWithProviders(<LoginPage />);
 
     expect(screen.getByRole('heading', { name: /welcome back/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /continue with google/i })).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/name@example.com/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/••••••••/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /forgot password\?/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /create an account/i })).toBeInTheDocument();
   });
@@ -36,5 +38,14 @@ describe('LoginPage', () => {
       expect(screen.getByText(/email is required/i)).toBeInTheDocument();
       expect(screen.getByText(/password is required/i)).toBeInTheDocument();
     });
+  });
+
+  it('handles Google sign in action', () => {
+    renderWithProviders(<LoginPage />);
+
+    const googleBtn = screen.getByRole('button', { name: /continue with google/i });
+    fireEvent.click(googleBtn);
+
+    expect(screen.getByText(/google authentication is enabled/i)).toBeInTheDocument();
   });
 });

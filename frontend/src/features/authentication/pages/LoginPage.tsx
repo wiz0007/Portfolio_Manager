@@ -2,20 +2,21 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Eye, EyeOff, Lock, Mail, TrendingUp } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
 
 import { loginSchema, LoginFormData } from '../schemas/authSchemas';
 import { useLogin } from '../hooks/useAuth';
 import { Button } from '@/shared/ui/Button';
 import { Input } from '@/shared/ui/Input';
 import { Label } from '@/shared/ui/Label';
-import { Card, CardHeader, CardTitle, CardDescription } from '@/shared/ui/Card';
+import { Card } from '@/shared/ui/Card';
 import { Alert } from '@/shared/ui/Alert';
-import { ThemeToggle } from '@/design-system';
+import { GoogleIcon } from '@/shared/ui/GoogleIcon';
 
 export const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [oauthNotice, setOauthNotice] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -37,6 +38,7 @@ export const LoginPage: React.FC = () => {
 
   const onSubmit = (data: LoginFormData) => {
     setServerError(null);
+    setOauthNotice(null);
     login(data, {
       onSuccess: () => {
         navigate(from, { replace: true });
@@ -47,115 +49,134 @@ export const LoginPage: React.FC = () => {
     });
   };
 
+  const handleGoogleSignIn = () => {
+    setOauthNotice('Google Authentication is enabled in the authentication scope and will be connected to the backend OAuth provider.');
+  };
+
   return (
-    <div className="relative min-h-screen flex flex-col justify-center bg-theme-bg text-theme-text px-4 py-12 sm:px-6 lg:px-8 transition-colors duration-200">
-      {/* Top Right Floating Theme Switcher */}
-      <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-10">
-        <ThemeToggle />
-      </div>
+    <div className="w-full flex justify-center">
+      <Card className="w-full max-w-[400px] border-theme-border bg-theme-card text-theme-text shadow-lg backdrop-blur-md p-6 sm:p-7">
+        <h1 className="text-xl font-bold tracking-tight text-theme-text mb-4">
+          Welcome back
+        </h1>
 
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex items-center justify-center gap-2.5 mb-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-theme-primary text-theme-text-inverse shadow-md">
-            <TrendingUp className="h-6 w-6" />
+        {oauthNotice && (
+          <div className="mb-4">
+            <Alert variant="info" title="Google Authentication">
+              {oauthNotice}
+            </Alert>
           </div>
-          <span className="text-2xl font-bold tracking-tight text-theme-text">
-            Portfolio Manager
-          </span>
+        )}
+
+        {serverError && (
+          <div className="mb-4">
+            <Alert variant="error" title="Authentication Error">
+              {serverError}
+            </Alert>
+          </div>
+        )}
+
+        {/* Google Sign In */}
+        <Button
+          type="button"
+          variant="secondary"
+          size="md"
+          fullWidth
+          onClick={handleGoogleSignIn}
+          leftIcon={<GoogleIcon size={18} />}
+          className="font-medium text-sm border-theme-border text-theme-text hover:bg-theme-surface-hover"
+        >
+          Continue with Google
+        </Button>
+
+        {/* Minimal Divider */}
+        <div className="relative my-4">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-theme-border" />
+          </div>
+          <div className="relative flex justify-center text-2xs uppercase">
+            <span className="bg-theme-card px-2.5 text-theme-text-muted font-medium tracking-wider">
+              Or continue with email
+            </span>
+          </div>
         </div>
-        <p className="text-center text-sm text-theme-text-muted">
-          Intelligent multi-asset wealth monitoring
-        </p>
-      </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <Card className="border-theme-border bg-theme-card text-theme-text shadow-xl backdrop-blur-md">
-          <CardHeader>
-            <CardTitle className="text-xl text-theme-text">Welcome back</CardTitle>
-            <CardDescription className="text-theme-text-muted">
-              Sign in to manage and analyze your portfolios
-            </CardDescription>
-          </CardHeader>
+        {/* Credentials Form */}
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-3.5" noValidate>
+          <div>
+            <Label htmlFor="email" required className="text-xs font-medium text-theme-text-secondary mb-1">
+              Email Address
+            </Label>
+            <Input
+              id="email"
+              type="email"
+              size="md"
+              autoComplete="email"
+              placeholder="name@example.com"
+              leftIcon={<Mail className="h-4 w-4 text-theme-text-muted" />}
+              error={errors.email?.message}
+              {...register('email')}
+            />
+          </div>
 
-          {serverError && (
-            <div className="mb-6">
-              <Alert variant="error" title="Authentication Error">
-                {serverError}
-              </Alert>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
-            <div>
-              <Label htmlFor="email" required className="text-theme-text-secondary">
-                Email Address
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <Label htmlFor="password" required className="text-xs font-medium text-theme-text-secondary mb-0">
+                Password
               </Label>
-              <div className="relative">
-                <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="name@example.com"
-                  error={errors.email?.message}
-                  {...register('email')}
-                  className="bg-theme-surface border-theme-border text-theme-text placeholder:text-theme-text-muted pl-10 focus:border-theme-primary"
-                />
-                <Mail className="absolute left-3 top-2.5 h-5 w-5 text-theme-text-muted pointer-events-none" />
-              </div>
+              <Link
+                to="/forgot-password"
+                className="text-xs font-medium text-theme-primary hover:underline transition-colors"
+              >
+                Forgot password?
+              </Link>
             </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <Label htmlFor="password" required className="text-theme-text-secondary">
-                  Password
-                </Label>
-              </div>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  placeholder="••••••••"
-                  error={errors.password?.message}
-                  {...register('password')}
-                  className="bg-theme-surface border-theme-border text-theme-text placeholder:text-theme-text-muted pl-10 pr-10 focus:border-theme-primary"
-                />
-                <Lock className="absolute left-3 top-2.5 h-5 w-5 text-theme-text-muted pointer-events-none" />
+            <Input
+              id="password"
+              type={showPassword ? 'text' : 'password'}
+              size="md"
+              autoComplete="current-password"
+              placeholder="••••••••"
+              leftIcon={<Lock className="h-4 w-4 text-theme-text-muted" />}
+              rightIcon={
                 <button
                   type="button"
                   tabIndex={-1}
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-2.5 text-theme-text-muted hover:text-theme-text transition-colors"
+                  className="text-theme-text-muted hover:text-theme-text transition-colors p-1"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
-              </div>
-            </div>
-
-            <Button
-              type="submit"
-              variant="primary"
-              size="md"
-              fullWidth
-              isLoading={isPending}
-              className="mt-2 font-semibold"
-            >
-              Sign In
-            </Button>
-          </form>
-
-          <div className="mt-6 border-t border-theme-border pt-5 text-center text-sm text-theme-text-muted">
-            Don't have an account yet?{' '}
-            <Link
-              to="/register"
-              className="font-medium text-theme-primary hover:underline transition-colors"
-            >
-              Create an account
-            </Link>
+              }
+              error={errors.password?.message}
+              {...register('password')}
+            />
           </div>
-        </Card>
-      </div>
+
+          <Button
+            type="submit"
+            variant="primary"
+            size="md"
+            fullWidth
+            isLoading={isPending}
+            className="mt-1 font-semibold"
+          >
+            Sign In
+          </Button>
+        </form>
+
+        {/* Minimal Footer */}
+        <div className="mt-5 pt-4 border-t border-theme-border text-center text-xs text-theme-text-muted">
+          Don't have an account yet?{' '}
+          <Link
+            to="/register"
+            className="font-semibold text-theme-primary hover:underline transition-colors"
+          >
+            Create an account
+          </Link>
+        </div>
+      </Card>
     </div>
   );
 };

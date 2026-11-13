@@ -2,6 +2,7 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { LoginPage } from '@/features/authentication/pages/LoginPage';
 import { RegisterPage } from '@/features/authentication/pages/RegisterPage';
+import { ForgotPasswordPage } from '@/features/authentication/pages/ForgotPasswordPage';
 import { VerifyEmailPage } from '@/features/authentication/pages/VerifyEmailPage';
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
 import { PortfoliosPage } from '@/features/portfolios/pages/PortfoliosPage';
@@ -15,18 +16,24 @@ import { WatchlistPlaceholderPage } from '@/features/watchlists/pages/WatchlistP
 import { ProtectedRoute } from './layouts/ProtectedRoute';
 import { PublicOnlyRoute } from './layouts/PublicOnlyRoute';
 import { AuthenticatedLayout } from './layouts/AuthenticatedLayout';
+import { AuthLayout } from './layouts/AuthLayout';
 
 export const AppRouter: React.FC = () => {
   return (
     <Routes>
-      {/* Public-only routes (redirect to /dashboard if already logged in) */}
+      {/* Public-only routes with Top Navbar */}
       <Route element={<PublicOnlyRoute />}>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
+        <Route element={<AuthLayout />}>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        </Route>
       </Route>
 
-      {/* Universal routes (accessible whether logged in or out) */}
-      <Route path="/verify-email" element={<VerifyEmailPage />} />
+      {/* Universal routes with Top Navbar */}
+      <Route element={<AuthLayout />}>
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
+      </Route>
 
       {/* Protected routes (redirect to /login if unauthenticated) */}
       <Route element={<ProtectedRoute />}>
