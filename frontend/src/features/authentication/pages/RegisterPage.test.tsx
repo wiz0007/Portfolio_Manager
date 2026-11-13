@@ -20,6 +20,7 @@ describe('RegisterPage', () => {
     renderWithProviders(<RegisterPage />);
 
     expect(screen.getByRole('heading', { name: /create an account/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /sign up with google/i })).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/john doe/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/name@example.com/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/minimum 8 characters/i)).toBeInTheDocument();
@@ -56,5 +57,13 @@ describe('RegisterPage', () => {
       expect(screen.getByText(/passwords do not match/i)).toBeInTheDocument();
     });
   });
-});
 
+  it('handles Google sign up action', () => {
+    renderWithProviders(<RegisterPage />);
+
+    const googleBtn = screen.getByRole('button', { name: /sign up with google/i });
+    fireEvent.click(googleBtn);
+
+    expect(screen.getByText(/google authentication is enabled/i)).toBeInTheDocument();
+  });
+});

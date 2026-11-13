@@ -1,0 +1,66 @@
+.container {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.dotWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.625rem;
+  height: 0.625rem;
+}
+
+.dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-full);
+}
+
+.pulse {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-full);
+  opacity: 0.75;
+  animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes ping {
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+/* Status Colors */
+.variantPositive .dot,
+.variantPositive .pulse {
+  background-color: var(--color-positive);
+}
+
+.variantNegative .dot,
+.variantNegative .pulse {
+  background-color: var(--color-negative);
+}
+
+.variantWarning .dot,
+.variantWarning .pulse {
+  background-color: var(--color-warning);
+}
+
+.variantInfo .dot,
+.variantInfo .pulse {
+  background-color: var(--color-info);
+}
+
+.variantNeutral .dot,
+.variantNeutral .pulse {
+  background-color: var(--color-neutral);
+}
+

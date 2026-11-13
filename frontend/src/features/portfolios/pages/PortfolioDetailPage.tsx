@@ -36,8 +36,8 @@ export const PortfolioDetailPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="py-24 flex flex-col items-center justify-center text-slate-400">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-500 mb-2" />
+      <div className="py-24 flex flex-col items-center justify-center text-theme-text-muted">
+        <Loader2 className="h-8 w-8 animate-spin text-theme-primary mb-2" />
         <p className="text-sm">Loading portfolio details...</p>
       </div>
     );
@@ -49,12 +49,12 @@ export const PortfolioDetailPage: React.FC = () => {
         <div className="h-12 w-12 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center justify-center mx-auto">
           <ShieldAlert className="h-6 w-6" />
         </div>
-        <h2 className="text-lg font-semibold text-white">Portfolio Unavailable</h2>
-        <p className="text-xs text-slate-400">
+        <h2 className="text-lg font-semibold text-theme-text">Portfolio Unavailable</h2>
+        <p className="text-xs text-theme-text-muted">
           This portfolio does not exist or you do not have permission to access it.
         </p>
         <Link to="/portfolios">
-          <Button variant="outline" className="border-slate-800 text-slate-300">
+          <Button variant="outline" className="border-theme-border text-theme-text">
             Back to Portfolios
           </Button>
         </Link>
@@ -69,7 +69,7 @@ export const PortfolioDetailPage: React.FC = () => {
         <div>
           <Link
             to="/portfolios"
-            className="inline-flex items-center text-xs font-medium text-slate-400 hover:text-white transition-colors"
+            className="inline-flex items-center text-xs font-medium text-theme-text-muted hover:text-theme-text transition-colors"
           >
             <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Back to Portfolios
           </Link>
@@ -77,17 +77,17 @@ export const PortfolioDetailPage: React.FC = () => {
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600/10 text-indigo-400 border border-indigo-500/20">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-theme-primary-subtle text-theme-primary border border-theme-primary/30">
               <Briefcase className="h-6 w-6" />
             </div>
             <div>
               <div className="flex items-center gap-2.5">
-                <h1 className="text-2xl font-bold tracking-tight text-white">{portfolio.name}</h1>
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono">
+                <h1 className="text-2xl font-bold tracking-tight text-theme-text">{portfolio.name}</h1>
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-theme-primary-subtle text-theme-primary border border-theme-primary/20 font-mono">
                   {portfolio.base_currency}
                 </span>
               </div>
-              <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
+              <div className="flex items-center gap-3 text-xs text-theme-text-muted mt-1">
                 <span className="flex items-center gap-1">
                   <Calendar className="h-3 w-3" /> Created {formatDate(portfolio.created_at)}
                 </span>
@@ -101,7 +101,8 @@ export const PortfolioDetailPage: React.FC = () => {
 
           <Button
             onClick={() => navigate(`/portfolios/${portfolio.id}/edit`)}
-            className="bg-slate-800 hover:bg-slate-700 text-white shrink-0 border border-slate-700"
+            variant="outline"
+            className="text-theme-text border-theme-border hover:bg-theme-hover shrink-0"
           >
             <Edit2 className="mr-2 h-4 w-4" /> Edit Portfolio
           </Button>
@@ -109,27 +110,27 @@ export const PortfolioDetailPage: React.FC = () => {
       </div>
 
       {/* Description Card */}
-      <Card className="border-slate-800 bg-slate-900/60 p-6">
-        <CardTitle className="text-sm font-semibold text-white uppercase tracking-wider text-slate-400 mb-2">
+      <Card className="border-theme-border bg-theme-card p-6 shadow-sm">
+        <CardTitle className="text-sm font-semibold uppercase tracking-wider text-theme-text-muted mb-2">
           Portfolio Overview & Strategy
         </CardTitle>
-        <p className="text-sm text-slate-300 leading-relaxed">
+        <p className="text-sm text-theme-text-secondary leading-relaxed">
           {portfolio.description || (
-            <span className="text-slate-500 italic">No description provided for this portfolio.</span>
+            <span className="text-theme-text-muted italic">No description provided for this portfolio.</span>
           )}
         </p>
       </Card>
 
       {/* Holdings & Instruments Section */}
-      <Card className="border-slate-800 bg-slate-900/40 border-dashed p-10 text-center space-y-3">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-slate-800 text-slate-400 border border-slate-700">
+      <Card className="border-theme-border bg-theme-card/60 border-dashed p-10 text-center space-y-3">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-theme-surface text-theme-text-muted border border-theme-border">
           <Layers className="h-6 w-6" />
         </div>
-        <h3 className="text-base font-semibold text-white">Holdings & Assets</h3>
-        <p className="mx-auto max-w-lg text-xs text-slate-400 leading-relaxed">
-          Asset tracking, instrument management, transaction ledger, and real-time market valuations are scheduled for Sprint 4.
+        <h3 className="text-base font-semibold text-theme-text">Holdings & Assets</h3>
+        <p className="mx-auto max-w-lg text-xs text-theme-text-muted leading-relaxed">
+          Asset tracking, instrument management, transaction ledger, and real-time market valuations are scheduled for Sprint 5.
         </p>
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-[11px] text-slate-300 font-mono">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-theme-surface border border-theme-border text-[11px] text-theme-text-secondary font-mono">
           Container ID: {portfolio.id}
         </div>
       </Card>

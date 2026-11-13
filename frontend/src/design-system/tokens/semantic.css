@@ -1,0 +1,28 @@
+/**
+ * Enterprise Design System — Semantic Color Tokens
+ * Purpose-driven variables bound to themes with backward-compatible aliases
+ */
+
+:root {
+  /* Backward Compatibility Aliases for existing theme references */
+  --color-background: var(--color-bg-app);
+  --color-background-subtle: var(--color-bg-subtle);
+  --color-surface: var(--color-surface-base);
+  --color-surface-card: var(--color-surface-card);
+  --color-surface-panel: var(--color-surface-panel);
+  --color-surface-dropdown: var(--color-surface-dropdown);
+  --color-surface-hover: var(--color-surface-hover);
+  --color-border: var(--color-border-base);
+  --color-primary: var(--color-brand-primary);
+  --color-primary-hover: var(--color-brand-primary-hover);
+  --color-primary-subtle: var(--color-brand-primary-subtle);
+  --color-secondary: var(--color-brand-secondary);
+  --color-accent: var(--color-brand-accent);
+  --color-accent-subtle: var(--color-brand-accent-subtle);
+  --chart-1: var(--chart-color-1);
+  --chart-2: var(--chart-color-2);
+  --chart-3: var(--chart-color-3);
+  --chart-4: var(--chart-color-4);
+  --chart-5: var(--chart-color-5);
+}
+
