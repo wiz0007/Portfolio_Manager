@@ -1,17 +1,22 @@
 @echo off
 setlocal enabledelayedexpansion
 
-set "ROOT_DIR=%~dp0"
-if "%ROOT_DIR:~-1%"=="\" set "ROOT_DIR=%ROOT_DIR:~0,-1%"
+set "CURR_DIR=%~dp0"
+if "%CURR_DIR:~-1%"=="\" set "CURR_DIR=%CURR_DIR:~0,-1%"
 
-if exist "%ROOT_DIR%\backend\.venv\Scripts\python.exe" (
-    set "VENV_PYTHON=%ROOT_DIR%\backend\.venv\Scripts\python.exe"
-    set "MANAGE_PY=%ROOT_DIR%\backend\manage.py"
-    set "BACKEND_DIR=%ROOT_DIR%\backend"
-) else if exist "%ROOT_DIR%\.venv\Scripts\python.exe" (
-    set "VENV_PYTHON=%ROOT_DIR%\.venv\Scripts\python.exe"
-    set "MANAGE_PY=%ROOT_DIR%\manage.py"
-    set "BACKEND_DIR=%ROOT_DIR%"
+rem Check if running inside backend or root
+if exist "%CURR_DIR%\.venv\Scripts\python.exe" (
+    set "VENV_PYTHON=%CURR_DIR%\.venv\Scripts\python.exe"
+    set "MANAGE_PY=%CURR_DIR%\manage.py"
+    set "BACKEND_DIR=%CURR_DIR%"
+) else if exist "%CURR_DIR%\backend\.venv\Scripts\python.exe" (
+    set "VENV_PYTHON=%CURR_DIR%\backend\.venv\Scripts\python.exe"
+    set "MANAGE_PY=%CURR_DIR%\backend\manage.py"
+    set "BACKEND_DIR=%CURR_DIR%\backend"
+) else if exist "%CURR_DIR%\..\backend\.venv\Scripts\python.exe" (
+    set "VENV_PYTHON=%CURR_DIR%\..\backend\.venv\Scripts\python.exe"
+    set "MANAGE_PY=%CURR_DIR%\..\backend\manage.py"
+    set "BACKEND_DIR=%CURR_DIR%\..\backend"
 ) else (
     echo [PPM Error] Python virtual environment not found in .venv or backend\.venv
     exit /b 1
@@ -51,60 +56,35 @@ if /i "%CMD%"=="run" (
         exit /b %ERRORLEVEL%
     )
     if /i "%SUBCMD%"=="shell" (
-        echo [PPM] Opening Django shell...
         "%VENV_PYTHON%" "%MANAGE_PY%" shell !REST_ARGS!
         exit /b %ERRORLEVEL%
     )
-    set "REST_FROM_2="
-    set "A_IDX=0"
-    for %%B in (%*) do (
-        set /a "A_IDX+=1"
-        if !A_IDX! gtr 1 (
-            set "REST_FROM_2=!REST_FROM_2! %%B"
-        )
-    )
-    "%VENV_PYTHON%" "%MANAGE_PY%" !REST_FROM_2!
+    "%VENV_PYTHON%" "%MANAGE_PY%" %SUBCMD% !REST_ARGS!
     exit /b %ERRORLEVEL%
 )
 
 if /i "%CMD%"=="dev" (
     echo [PPM] Starting Django backend on http://127.0.0.1:8000 ...
-    set "REST_FROM_2="
-    set "A_IDX=0"
-    for %%B in (%*) do (
-        set /a "A_IDX+=1"
-        if !A_IDX! gtr 1 (
-            set "REST_FROM_2=!REST_FROM_2! %%B"
-        )
-    )
-    "%VENV_PYTHON%" "%MANAGE_PY%" runserver !REST_FROM_2!
+    "%VENV_PYTHON%" "%MANAGE_PY%" runserver %SUBCMD% !REST_ARGS!
     exit /b %ERRORLEVEL%
 )
 
 if /i "%CMD%"=="test" (
     echo [PPM] Running backend test suite...
-    set "REST_FROM_2="
-    set "A_IDX=0"
-    for %%B in (%*) do (
-        set /a "A_IDX+=1"
-        if !A_IDX! gtr 1 (
-            set "REST_FROM_2=!REST_FROM_2! %%B"
-        )
-    )
-    "%VENV_PYTHON%" -m pytest "%BACKEND_DIR%" !REST_FROM_2!
+    "%VENV_PYTHON%" -m pytest "%BACKEND_DIR%" %SUBCMD% !REST_ARGS!
     exit /b %ERRORLEVEL%
 )
 
 if "%CMD%"=="" (
     echo ===================================================
-    echo  PPM - Python Portfolio Manager (Django Task Runner)
+    echo  PPM - Python Portfolio Manager ^(Django Task Runner^)
     echo ===================================================
     echo  Usage:
-    echo    .\ppm run dev           - Start Django development server
-    echo    .\ppm run test          - Run backend test suite
-    echo    .\ppm run migrate       - Apply database migrations
-    echo    .\ppm run makemigrations- Create migrations
-    echo    .\ppm [command]         - Forward command directly to Django manage.py
+    echo    .\ppm run dev            - Start Django development server
+    echo    .\ppm run test           - Run backend test suite
+    echo    .\ppm run migrate        - Apply database migrations
+    echo    .\ppm run makemigrations - Create migrations
+    echo    .\ppm [command]          - Forward command directly to Django manage.py
     echo ===================================================
     exit /b 0
 )

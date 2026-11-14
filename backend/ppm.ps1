@@ -12,14 +12,18 @@ param(
 
 $RootDir = $PSScriptRoot
 
-if (Test-Path (Join-Path $RootDir "backend\.venv\Scripts\python.exe")) {
-    $VenvPython = Join-Path $RootDir "backend\.venv\Scripts\python.exe"
-    $ManagePy = Join-Path $RootDir "backend\manage.py"
-    $BackendDir = Join-Path $RootDir "backend"
-} elseif (Test-Path (Join-Path $RootDir ".venv\Scripts\python.exe")) {
+if (Test-Path (Join-Path $RootDir ".venv\Scripts\python.exe")) {
     $VenvPython = Join-Path $RootDir ".venv\Scripts\python.exe"
     $ManagePy = Join-Path $RootDir "manage.py"
     $BackendDir = $RootDir
+} elseif (Test-Path (Join-Path $RootDir "backend\.venv\Scripts\python.exe")) {
+    $VenvPython = Join-Path $RootDir "backend\.venv\Scripts\python.exe"
+    $ManagePy = Join-Path $RootDir "backend\manage.py"
+    $BackendDir = Join-Path $RootDir "backend"
+} elseif (Test-Path (Join-Path $RootDir "..\backend\.venv\Scripts\python.exe")) {
+    $VenvPython = Join-Path $RootDir "..\backend\.venv\Scripts\python.exe"
+    $ManagePy = Join-Path $RootDir "..\backend\manage.py"
+    $BackendDir = Join-Path $RootDir "..\backend"
 } else {
     Write-Host "[PPM Error] Python virtual environment not found in .venv or backend\.venv" -ForegroundColor Red
     exit 1
@@ -85,4 +89,3 @@ if ([string]::IsNullOrWhiteSpace($Command)) {
 }
 
 & $VenvPython $ManagePy $Command $SubCommand @RemainingArgs
-

@@ -16,6 +16,7 @@ import { Portfolio } from '../types';
 import { Card } from '@/shared/ui/Card';
 import { Button } from '@/shared/ui/Button';
 import { Input } from '@/shared/ui/Input';
+import styles from './PortfoliosPage.module.css';
 
 export const PortfoliosPage: React.FC = () => {
   const navigate = useNavigate();
@@ -59,12 +60,12 @@ export const PortfoliosPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className={styles.container}>
+      {/* 1. Header with Hierarchy & Primary Action */}
+      <header className={styles.headerRow}>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-theme-text">Portfolios</h1>
-          <p className="text-sm text-theme-text-muted mt-1">
+          <h1 className={styles.title}>Portfolios</h1>
+          <p className={styles.subtitle}>
             Create and manage independent investment containers and currency allocations.
           </p>
         </div>
@@ -74,25 +75,25 @@ export const PortfoliosPage: React.FC = () => {
         >
           <Plus className="mr-2 h-4 w-4" /> Create Portfolio
         </Button>
-      </div>
+      </header>
 
-      {/* Filter / Search Bar */}
+      {/* 2. Filter / Search Bar (placed adjacent to data) */}
       {portfolios.length > 0 && (
-        <div className="flex items-center gap-3 max-w-md">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-theme-text-muted" />
+        <div className={styles.filterBar}>
+          <div className={styles.searchWrapper}>
+            <Search className={styles.searchIcon} />
             <Input
               type="text"
               placeholder="Filter by name, currency, or note..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 bg-theme-surface border-theme-border text-theme-text text-sm"
+              className={styles.searchInput}
             />
           </div>
         </div>
       )}
 
-      {/* Loading state */}
+      {/* 3. Loading State */}
       {isLoading && (
         <div className="py-16 flex flex-col items-center justify-center text-theme-text-muted">
           <Loader2 className="h-8 w-8 animate-spin text-theme-primary mb-2" />
@@ -100,7 +101,7 @@ export const PortfoliosPage: React.FC = () => {
         </div>
       )}
 
-      {/* Error state */}
+      {/* 4. Error State */}
       {isError && (
         <Card className="border-rose-900/40 bg-rose-950/10 p-6 text-center text-rose-300">
           <AlertTriangle className="h-8 w-8 text-rose-400 mx-auto mb-2" />
@@ -111,9 +112,9 @@ export const PortfoliosPage: React.FC = () => {
         </Card>
       )}
 
-      {/* Empty State */}
+      {/* 5. Empty State */}
       {!isLoading && !isError && portfolios.length === 0 && (
-        <Card className="border-theme-border bg-theme-card/60 border-dashed p-12 text-center">
+        <Card className="border-theme-border bg-theme-surface border-dashed p-12 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-theme-primary-subtle text-theme-primary border border-theme-primary/30 mb-4">
             <Briefcase className="h-7 w-7" />
           </div>
@@ -130,7 +131,7 @@ export const PortfoliosPage: React.FC = () => {
         </Card>
       )}
 
-      {/* Portfolio Grid */}
+      {/* 6. Portfolio Grid */}
       {!isLoading && !isError && portfolios.length > 0 && (
         <>
           {filteredPortfolios.length === 0 ? (
@@ -138,46 +139,43 @@ export const PortfoliosPage: React.FC = () => {
               No portfolios match "{searchQuery}".
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div className={styles.grid}>
               {filteredPortfolios.map((portfolio) => (
-                <Card
-                  key={portfolio.id}
-                  className="border-theme-border bg-theme-card hover:border-theme-primary/50 transition-all flex flex-col justify-between p-5 group shadow-sm"
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
+                <div key={portfolio.id} className={styles.card}>
+                  <div>
+                    <div className={styles.cardTop}>
+                      <div className="min-w-0 pr-2">
                         <Link
                           to={`/portfolios/${portfolio.id}`}
-                          className="text-base font-semibold text-theme-text group-hover:text-theme-primary transition-colors truncate block"
+                          className={styles.cardTitle}
                           title={portfolio.name}
                         >
                           {portfolio.name}
                         </Link>
-                        <div className="flex items-center gap-2 mt-1 text-xs text-theme-text-muted">
+                        <div className={styles.cardDate}>
                           <Calendar className="h-3.5 w-3.5" />
                           <span>Created {formatDate(portfolio.created_at)}</span>
                         </div>
                       </div>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-theme-primary-subtle text-theme-primary border border-theme-primary/20 shrink-0 font-mono">
+                      <span className={styles.currencyBadge}>
                         {portfolio.base_currency}
                       </span>
                     </div>
 
                     {portfolio.description ? (
-                      <p className="text-xs text-theme-text-secondary line-clamp-2 leading-relaxed">
+                      <p className={styles.cardDescription}>
                         {portfolio.description}
                       </p>
                     ) : (
-                      <p className="text-xs text-theme-text-muted italic">No description provided.</p>
+                      <p className="text-xs text-theme-text-muted italic mt-3">No description provided.</p>
                     )}
                   </div>
 
-                  {/* Actions footer */}
-                  <div className="pt-4 mt-4 border-t border-theme-border flex items-center justify-between">
+                  {/* Actions Footer */}
+                  <div className={styles.cardActions}>
                     <Link
                       to={`/portfolios/${portfolio.id}`}
-                      className="text-xs text-theme-text-muted hover:text-theme-text flex items-center gap-1 font-medium transition-colors"
+                      className={styles.viewDetailsLink}
                     >
                       View Details <ExternalLink className="h-3 w-3" />
                     </Link>
@@ -203,14 +201,14 @@ export const PortfoliosPage: React.FC = () => {
                       </Button>
                     </div>
                   </div>
-                </Card>
+                </div>
               ))}
             </div>
           )}
         </>
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* 7. Delete Confirmation Modal */}
       {deletingPortfolio && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-theme-bg/80 backdrop-blur-sm">
           <Card className="w-full max-w-md border-theme-border bg-theme-card p-6 space-y-4 shadow-2xl">

@@ -1,0 +1,74 @@
+/* Navbar CSS Module (UI Rulebook Compliant) */
+
+.navbar {
+  height: 64px;
+  min-height: 64px;
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  padding: 0 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: background-color 200ms ease, border-color 200ms ease;
+}
+
+.brandLink {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  border-radius: var(--radius-md, 8px);
+  transition: opacity 150ms ease;
+}
+
+.brandLink:hover {
+  opacity: 0.9;
+}
+
+.brandLink:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.brandContainer {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.brandIcon {
+  display: flex;
+  height: 36px;
+  width: 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md, 8px);
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+  box-shadow: var(--shadow-sm);
+  transition: transform 150ms ease;
+}
+
+.brandTitle {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--color-text);
+}
+
+.rightGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .navbar {
+    padding: 0 1rem;
+  }
+}
+
