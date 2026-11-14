@@ -11,12 +11,11 @@ import { Input } from '@/shared/ui/Input';
 import { Label } from '@/shared/ui/Label';
 import { Card } from '@/shared/ui/Card';
 import { Alert } from '@/shared/ui/Alert';
-import { GoogleIcon } from '@/shared/ui/GoogleIcon';
+import { GoogleAuthButton } from '../components/GoogleAuthButton';
 
 export const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [oauthNotice, setOauthNotice] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -38,7 +37,6 @@ export const LoginPage: React.FC = () => {
 
   const onSubmit = (data: LoginFormData) => {
     setServerError(null);
-    setOauthNotice(null);
     login(data, {
       onSuccess: () => {
         navigate(from, { replace: true });
@@ -49,24 +47,12 @@ export const LoginPage: React.FC = () => {
     });
   };
 
-  const handleGoogleSignIn = () => {
-    setOauthNotice('Google Authentication is enabled in the authentication scope and will be connected to the backend OAuth provider.');
-  };
-
   return (
     <div className="w-full flex justify-center">
       <Card className="w-full max-w-[400px] border-theme-border bg-theme-card text-theme-text shadow-lg backdrop-blur-md p-6 sm:p-7">
         <h1 className="text-xl font-bold tracking-tight text-theme-text mb-4">
           Welcome back
         </h1>
-
-        {oauthNotice && (
-          <div className="mb-4">
-            <Alert variant="info" title="Google Authentication">
-              {oauthNotice}
-            </Alert>
-          </div>
-        )}
 
         {serverError && (
           <div className="mb-4">
@@ -77,17 +63,7 @@ export const LoginPage: React.FC = () => {
         )}
 
         {/* Google Sign In */}
-        <Button
-          type="button"
-          variant="secondary"
-          size="md"
-          fullWidth
-          onClick={handleGoogleSignIn}
-          leftIcon={<GoogleIcon size={18} />}
-          className="font-medium text-sm border-theme-border text-theme-text hover:bg-theme-surface-hover"
-        >
-          Continue with Google
-        </Button>
+        <GoogleAuthButton mode="signin" onError={(err) => setServerError(err)} />
 
         {/* Minimal Divider */}
         <div className="relative my-4">

@@ -34,6 +34,17 @@ export function useLogin() {
   });
 }
 
+export function useGoogleLogin() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (credential: string) => authService.googleLogin(credential),
+    onSuccess: (data) => {
+      queryClient.setQueryData(AUTH_USER_QUERY_KEY, data.user);
+    },
+  });
+}
+
 export function useRegister() {
   const queryClient = useQueryClient();
 
