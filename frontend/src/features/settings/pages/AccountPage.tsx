@@ -6,12 +6,11 @@ import {
   Mail,
   CheckCircle2,
   AlertCircle,
-  Info,
   Send,
 } from 'lucide-react';
 import { useCurrentUser, useLogout, useResendVerification } from '@/features/authentication/hooks/useAuth';
-import { Card, CardTitle, CardDescription } from '@/shared/ui/Card';
 import { Button } from '@/shared/ui/Button';
+import styles from './Settings.module.css';
 
 export const AccountPage: React.FC = () => {
   const { data: user } = useCurrentUser();
@@ -49,28 +48,30 @@ export const AccountPage: React.FC = () => {
     );
   };
 
-  const isActive = user?.is_active !== false;
   const isEmailVerified = Boolean(user?.is_email_verified);
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-theme-text">Account Settings</h1>
-        <p className="text-sm text-theme-text-muted">
+    <div className={styles.container}>
+      {/* 1. Page Header */}
+      <header className={styles.headerRow}>
+        <h1 className={styles.title}>Account Settings</h1>
+        <p className={styles.subtitle}>
           Manage your account security, authentication credentials, and active sessions.
         </p>
-      </div>
+      </header>
 
-      {/* Account Overview Card */}
-      <Card className="border-theme-border bg-theme-card p-6">
-        <CardTitle className="text-lg text-theme-text mb-1">Account & Verification Status</CardTitle>
-        <CardDescription className="text-xs text-theme-text-muted mb-6">
-          Real system verification and credential status.
-        </CardDescription>
+      {/* 2. Account Overview Card */}
+      <div className={styles.card}>
+        <div className={styles.cardHeader}>
+          <h2 className={styles.cardTitle}>Account & Verification Status</h2>
+          <p className={styles.cardDescription}>
+            Real system verification and credential status.
+          </p>
+        </div>
 
         <div className="space-y-4">
           {/* Registered Email & Verification */}
-          <div className="p-4 rounded-lg bg-theme-surface border border-theme-border space-y-3">
+          <div className="p-4 rounded-lg bg-theme-bg border border-theme-border space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Mail className="h-5 w-5 text-theme-primary" />
@@ -97,131 +98,75 @@ export const AccountPage: React.FC = () => {
             {/* Unverified Action State */}
             {!isEmailVerified && (
               <div className="pt-2 border-t border-theme-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="text-xs text-amber-300/90">
-                  Your email is unverified. Please verify to ensure uninterrupted account access.
+                <div className="text-xs text-amber-400/90">
+                  Your email address requires confirmation to unlock advanced notification alerts.
                 </div>
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={handleResendVerification}
-                  disabled={isResending}
-                  className="shrink-0 border-amber-500/40 text-amber-300 hover:bg-amber-500/10 hover:text-amber-200"
+                  isLoading={isResending}
+                  className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 shrink-0"
                 >
-                  <Send className="mr-1.5 h-3.5 w-3.5" />
-                  {isResending ? 'Sending link...' : 'Resend Verification Link'}
+                  <Send className="mr-1.5 h-3.5 w-3.5" /> Resend verification link
                 </Button>
               </div>
             )}
 
-            {/* Resend Status Feedback */}
-            {resendStatus === 'success' && (
-              <div className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded p-2.5">
+            {/* Feedback notification */}
+            {resendStatus !== 'idle' && (
+              <div
+                className={`p-3 rounded-lg text-xs ${
+                  resendStatus === 'success'
+                    ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-300'
+                    : 'bg-rose-500/10 border border-rose-500/20 text-rose-300'
+                }`}
+              >
                 {resendMessage}
               </div>
             )}
-            {resendStatus === 'error' && (
-              <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded p-2.5">
-                {resendMessage}
-              </div>
-            )}
           </div>
 
-          {/* Account Activation Status */}
-          <div className="flex items-center justify-between p-4 rounded-lg bg-theme-surface border border-theme-border">
+          {/* Account Status */}
+          <div className={styles.infoRow}>
             <div className="flex items-center gap-3">
               <Shield className="h-5 w-5 text-theme-primary" />
               <div>
-                <div className="text-xs font-semibold text-theme-text-muted uppercase tracking-wider">
-                  Account Activation
-                </div>
-                <div className="text-sm font-medium text-theme-text">
-                  {isActive ? 'Account Active' : 'Account Suspended'}
-                </div>
+                <div className={styles.infoLabel}>Account State</div>
+                <div className={styles.infoValue}>Active</div>
               </div>
             </div>
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium border ${
-                isActive
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                  : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-              }`}
-            >
-              {isActive ? (
-                <>
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Active
-                </>
-              ) : (
-                <>
-                  <AlertCircle className="h-3.5 w-3.5" /> Inactive
-                </>
-              )}
-            </span>
-          </div>
-
-          {/* Session Authentication Info */}
-          <div className="flex items-center justify-between p-4 rounded-lg bg-theme-surface border border-theme-border">
-            <div className="flex items-center gap-3">
-              <Shield className="h-5 w-5 text-theme-primary" />
-              <div>
-                <div className="text-xs font-semibold text-theme-text-muted uppercase tracking-wider">
-                  Session Authentication
-                </div>
-                <div className="text-sm font-medium text-theme-text">HTTP-Only Cookie with CSRF Defense</div>
-              </div>
-            </div>
-            <span className="text-xs text-theme-text-muted font-mono">sessionid active</span>
+            <span className="text-xs text-theme-text-muted">Standard Member</span>
           </div>
         </div>
-      </Card>
+      </div>
 
-      {/* Security & Password Policy Card */}
-      <Card className="border-theme-border bg-theme-card p-6">
-        <CardTitle className="text-lg text-theme-text mb-1">Password & Authentication</CardTitle>
-        <CardDescription className="text-xs text-theme-text-muted mb-6">
-          Password hashing uses PBKDF2 with SHA256 iterations.
-        </CardDescription>
-
-        <div className="rounded-lg border border-theme-border bg-theme-surface p-4 space-y-3">
-          <div className="flex items-start gap-3">
-            <Info className="h-5 w-5 text-theme-primary shrink-0 mt-0.5" />
-            <div>
-              <div className="text-sm font-medium text-theme-text">
-                Password Rotation & Multi-Factor Security
-              </div>
-              <p className="text-xs text-theme-text-muted mt-0.5">
-                Self-service password changes and multi-factor authentication are scheduled for subsequent security increments.
-              </p>
-            </div>
-          </div>
+      {/* 3. Session & Security Actions */}
+      <div className={styles.card}>
+        <div className={styles.cardHeader}>
+          <h2 className={styles.cardTitle}>Session & Security</h2>
+          <p className={styles.cardDescription}>
+            Sign out of your active session or manage device access.
+          </p>
         </div>
-      </Card>
 
-      {/* Session Management & Logout */}
-      <Card className="border-theme-border bg-theme-card p-6">
-        <CardTitle className="text-lg text-theme-text mb-1">Session Management</CardTitle>
-        <CardDescription className="text-xs text-theme-text-muted mb-4">
-          Terminate your current authenticated session and flush session cookies.
-        </CardDescription>
-
-        <div className="flex items-center justify-between p-4 rounded-lg bg-theme-surface border border-theme-border">
+        <div className="flex items-center justify-between pt-2">
           <div>
-            <div className="text-sm font-medium text-theme-text">Sign Out from this Browser</div>
-            <div className="text-xs text-theme-text-muted">
-              Clears the session cookie from the browser and destroys the server-side session.
+            <div className="text-sm font-medium text-theme-text">Sign out of this session</div>
+            <div className="text-xs text-theme-text-muted mt-0.5">
+              Terminates your secure HTTP-only refresh tokens.
             </div>
           </div>
-
           <Button
             variant="danger"
+            size="sm"
             onClick={handleLogout}
-            disabled={isLoggingOut}
-            className="bg-rose-600 hover:bg-rose-700 text-white shrink-0 ml-4 shadow-sm"
+            isLoading={isLoggingOut}
           >
-            <LogOut className="mr-2 h-4 w-4" />
-            {isLoggingOut ? 'Signing out...' : 'Sign Out'}
+            <LogOut className="mr-1.5 h-3.5 w-3.5" /> Sign Out
           </Button>
         </div>
-      </Card>
+      </div>
     </div>
   );
 };

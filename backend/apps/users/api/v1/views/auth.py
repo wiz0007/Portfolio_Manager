@@ -9,6 +9,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.users.api.v1.serializers import (
+    GoogleAuthSerializer,
     LoginSerializer,
     RegisterSerializer,
     ResendVerificationSerializer,
@@ -18,6 +19,7 @@ from apps.users.api.v1.serializers import (
 )
 from apps.users.services.auth_service import AuthService
 from apps.users.services.email_verification import EmailVerificationService
+from apps.users.services.google_auth import GoogleAuthService
 from apps.users.services.user_service import UserService
 
 
@@ -114,6 +116,53 @@ class LoginView(APIView):
                 "user": UserSerializer(user).data,
             },
             status=status.HTTP_200_OK,
+        )
+
+
+class GoogleAuthView(APIView):
+    """
+    Authenticate or register a user using a Google OAuth ID token.
+    Establishes an HTTP-only authenticated session upon successful token verification.
+    """
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth'
+
+    @extend_schema(
+        summary="Google OAuth Login",
+        description="Verifies Google ID token, provisions/authenticates user, and establishes an HTTP-only session.",
+        request=GoogleAuthSerializer,
+        responses={
+            200: OpenApiResponse(response=UserSerializer, description="Google authentication successful"),
+            201: OpenApiResponse(response=UserSerializer, description="Account created and authenticated via Google"),
+            400: OpenApiResponse(description="Invalid Google credential or inactive account"),
+        },
+        tags=["Authentication"],
+    )
+    def post(self, request):
+        serializer = GoogleAuthSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        token = serializer.validated_data['token']
+        payload = GoogleAuthService.verify_token(token)
+        user, created = GoogleAuthService.authenticate_or_register_user(payload)
+
+        AuthService.login_user(request, user)
+
+        status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        message = (
+            "Account created and authenticated via Google successfully."
+            if created
+            else "Google authentication successful."
+        )
+
+        return Response(
+            {
+                "message": message,
+                "user": UserSerializer(user).data,
+            },
+            status=status_code,
         )
 
 

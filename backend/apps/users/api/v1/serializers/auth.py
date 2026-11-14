@@ -131,3 +131,36 @@ class LoginSerializer(serializers.Serializer):
 
         attrs['user'] = user_obj
         return attrs
+
+
+class GoogleAuthSerializer(serializers.Serializer):
+    """Serializer for Google OAuth credential authentication."""
+
+    credential = serializers.CharField(
+        required=False,
+        allow_blank=False,
+        trim_whitespace=True,
+        help_text="Google OAuth ID token or access token.",
+    )
+    id_token = serializers.CharField(
+        required=False,
+        allow_blank=False,
+        trim_whitespace=True,
+        help_text="Alias for Google ID token.",
+    )
+    access_token = serializers.CharField(
+        required=False,
+        allow_blank=False,
+        trim_whitespace=True,
+        help_text="Google OAuth2 access token.",
+    )
+
+    def validate(self, attrs):
+        token = attrs.get('credential') or attrs.get('id_token') or attrs.get('access_token')
+        if not token:
+            raise serializers.ValidationError({
+                'credential': 'Google credential, id_token, or access_token is required.'
+            })
+        attrs['token'] = token
+        return attrs
+

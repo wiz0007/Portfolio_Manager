@@ -209,3 +209,6 @@ DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@portfoliomanager.l
 FRONTEND_BASE_URL = os.getenv('FRONTEND_BASE_URL', 'http://localhost:5173')
 EMAIL_VERIFICATION_TIMEOUT = int(os.getenv('EMAIL_VERIFICATION_TIMEOUT', '1800'))
 
+# Google OAuth Configuration
+GOOGLE_OAUTH_CLIENT_ID = os.getenv('OAUTH_CLIENT_ID', os.getenv('GOOGLE_OAUTH_CLIENT_ID', '')).strip()
+

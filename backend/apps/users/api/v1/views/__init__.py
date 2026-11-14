@@ -1,6 +1,7 @@
 from .auth import (
     CSRFTokenView,
     CurrentUserView,
+    GoogleAuthView,
     LoginView,
     LogoutView,
     RegisterView,
@@ -11,6 +12,7 @@ from .auth import (
 __all__ = [
     'CSRFTokenView',
     'CurrentUserView',
+    'GoogleAuthView',
     'LoginView',
     'LogoutView',
     'RegisterView',

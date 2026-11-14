@@ -1,0 +1,12 @@
+{
+  "name": "portfolio-manager-backend",
+  "private": true,
+  "description": "Django backend scripts proxy",
+  "scripts": {
+    "dev": ".venv\\Scripts\\python.exe manage.py runserver",
+    "test": ".venv\\Scripts\\pytest .",
+    "migrate": ".venv\\Scripts\\python.exe manage.py migrate",
+    "makemigrations": ".venv\\Scripts\\python.exe manage.py makemigrations"
+  }
+}
+

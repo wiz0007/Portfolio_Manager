@@ -1,0 +1,30 @@
+/**
+ * Enterprise Design System — Financial Semantics & Tabular Data Tokens
+ * Defines dedicated variables for financial figures, returns, yields, and tabular data.
+ * Adheres strictly to Section 8 of UI Rulebook: decoupling financial indicators from brand accents.
+ */
+
+:root {
+  /* Financial Semantic Returns */
+  --color-financial-gain: var(--color-positive);
+  --color-financial-gain-subtle: var(--color-positive-subtle);
+  --color-financial-gain-text: var(--color-positive-text);
+
+  --color-financial-loss: var(--color-negative);
+  --color-financial-loss-subtle: var(--color-negative-subtle);
+  --color-financial-loss-text: var(--color-negative-text);
+
+  --color-financial-neutral: var(--color-neutral);
+  --color-financial-neutral-subtle: var(--color-neutral-subtle);
+
+  --color-financial-warning: var(--color-warning);
+  --color-financial-warning-subtle: var(--color-warning-subtle);
+  --color-financial-warning-text: var(--color-warning-text);
+
+  /* Tabular Numerics for Financial Tables & Metric Displays */
+  --font-numeric-tabular: tabular-nums;
+  --font-numeric-dense: tabular-nums lining-nums;
+  --table-cell-padding-y: var(--space-2-5, 10px);
+  --table-cell-padding-x: var(--space-3-5, 14px);
+}
+

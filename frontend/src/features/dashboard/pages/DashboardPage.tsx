@@ -16,8 +16,9 @@ import {
 import { useCurrentUser } from '@/features/authentication/hooks/useAuth';
 import { useDashboardOverview } from '@/features/dashboard/hooks/useDashboard';
 import { useHealthCheck } from '@/shared/hooks/useHealth';
-import { Card, CardTitle, CardDescription } from '@/shared/ui/Card';
+import { Card } from '@/shared/ui/Card';
 import { Button } from '@/shared/ui/Button';
+import styles from './DashboardPage.module.css';
 
 export const DashboardPage: React.FC = () => {
   const { data: currentUser } = useCurrentUser();
@@ -67,30 +68,25 @@ export const DashboardPage: React.FC = () => {
   const dbHealth = getDbHealthStatus();
 
   return (
-    <div className="space-y-6">
-      {/* Welcome Banner */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-theme-border bg-gradient-to-r from-theme-card via-theme-surface to-theme-card p-6 shadow-sm transition-colors duration-200">
+    <div className={styles.container}>
+      {/* 1. Header with Hierarchy & Actions */}
+      <header className={styles.headerRow}>
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-400 border border-emerald-500/20">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+          <div className={styles.headerMeta}>
+            <span className={styles.statusBadge}>
+              <span className={`${styles.dot} bg-emerald-400`} />
               Active Session
             </span>
-            <span className="text-xs text-theme-text-muted flex items-center gap-1.5">
-              <span>| DB Status:</span>
-              <span className={`inline-block h-1.5 w-1.5 rounded-full ${dbHealth.dot}`} />
-              <span className={dbHealth.color}>{dbHealth.label}</span>
-            </span>
+            <span>| DB Status:</span>
+            <span className={`inline-block ${styles.dot} ${dbHealth.dot}`} />
+            <span className={dbHealth.color}>{dbHealth.label}</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-theme-text">
+          <h1 className={styles.title}>
             Welcome back, {user?.full_name || 'Investor'}!
           </h1>
-          <p className="mt-1 text-sm text-theme-text-muted">
-            Your investment intelligence dashboard is ready. Manage your assets and financial health in one place.
-          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className={styles.headerActions}>
           <Link to="/settings/profile">
             <Button variant="outline" size="sm" className="text-theme-text border-theme-border hover:bg-theme-hover">
               <User className="mr-1.5 h-3.5 w-3.5" /> Edit Profile
@@ -102,9 +98,9 @@ export const DashboardPage: React.FC = () => {
             </Button>
           </Link>
         </div>
-      </div>
+      </header>
 
-      {/* API Error State Banner */}
+      {/* 2. Error State Banner */}
       {isError && (
         <Card className="border-rose-900/40 bg-rose-950/20 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-rose-300">
           <div className="flex items-center gap-3">
@@ -129,17 +125,15 @@ export const DashboardPage: React.FC = () => {
         </Card>
       )}
 
-      {/* Overview Stat Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {/* Stat 1: Portfolios Count */}
-        <Card className="border-theme-border bg-theme-card p-5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-theme-text-muted uppercase tracking-wider">
-              Portfolios Created
-            </span>
+      {/* 3. Overview Stat Cards */}
+      <section className={styles.metricsGrid} aria-label="Key Metrics">
+        {/* Metric 1: Portfolios Count */}
+        <div className={styles.metricCard}>
+          <div className={styles.metricHeader}>
+            <span className={styles.metricLabel}>Portfolios Created</span>
             <Briefcase className="h-4 w-4 text-theme-primary" />
           </div>
-          <div className="mt-2 text-2xl font-bold text-theme-text">
+          <div className={styles.metricValue}>
             {isLoading && !overview ? (
               <span className="text-theme-text-muted animate-pulse">...</span>
             ) : isError && !overview ? (
@@ -148,7 +142,7 @@ export const DashboardPage: React.FC = () => {
               overview?.portfolio_count ?? 0
             )}
           </div>
-          <p className="mt-1 text-xs text-theme-text-muted">
+          <p className={styles.metricSubtext}>
             {isLoading && !overview
               ? 'Loading active portfolios...'
               : isError && !overview
@@ -157,56 +151,50 @@ export const DashboardPage: React.FC = () => {
               ? 'No active portfolios yet'
               : `${overview?.portfolio_count} active portfolio${(overview?.portfolio_count ?? 0) > 1 ? 's' : ''}`}
           </p>
-        </Card>
+        </div>
 
-        {/* Stat 2: Database Connectivity */}
-        <Card className="border-theme-border bg-theme-card p-5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-theme-text-muted uppercase tracking-wider">
-              Database Connectivity
-            </span>
+        {/* Metric 2: Database Connectivity */}
+        <div className={styles.metricCard}>
+          <div className={styles.metricHeader}>
+            <span className={styles.metricLabel}>Database Connectivity</span>
             <Database className={`h-4 w-4 ${dbHealth.color}`} />
           </div>
-          <div className={`mt-2 text-lg font-bold ${dbHealth.color}`}>
+          <div className={`${styles.metricValue} ${dbHealth.color}`} style={{ fontSize: '1.125rem' }}>
             {dbHealth.label}
           </div>
-          <p className="mt-1 text-xs text-theme-text-muted">
+          <p className={styles.metricSubtext}>
             Verified backend health probe
           </p>
-        </Card>
+        </div>
 
-        {/* Stat 3: Security & Session Protection */}
-        <Card className="border-theme-border bg-theme-card p-5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-theme-text-muted uppercase tracking-wider">
-              Session Security
-            </span>
+        {/* Metric 3: Security & Session Protection */}
+        <div className={styles.metricCard}>
+          <div className={styles.metricHeader}>
+            <span className={styles.metricLabel}>Session Security</span>
             <ShieldCheck className="h-4 w-4 text-theme-primary" />
           </div>
-          <div className="mt-2 text-lg font-bold text-theme-text">
+          <div className={styles.metricValue} style={{ fontSize: '1.125rem' }}>
             Active Session
           </div>
-          <p className="mt-1 text-xs text-theme-text-muted">
+          <p className={styles.metricSubtext}>
             HTTP-only cookies & CSRF verification
           </p>
-        </Card>
-      </div>
+        </div>
+      </section>
 
-      {/* Main Content Grid: Portfolios & Analytics Preview */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      {/* 4. Main Content Grid: Portfolios & Analytics Preview */}
+      <div className={styles.sectionsGrid}>
         {/* Portfolio Section */}
-        <Card className="border-theme-border bg-theme-card p-6 flex flex-col justify-between">
+        <div className={styles.sectionCard}>
           <div>
-            <div className="flex items-center justify-between mb-4">
+            <div className={styles.sectionHeader}>
               <div>
-                <CardTitle className="text-lg font-semibold text-theme-text">Your Portfolios</CardTitle>
-                <CardDescription className="text-xs text-theme-text-muted">
-                  Real user portfolio containers
-                </CardDescription>
+                <h2 className={styles.sectionTitle}>Your Portfolios</h2>
+                <span className="text-xs text-theme-text-muted">Real user portfolio containers</span>
               </div>
               <div className="flex items-center gap-2">
                 {overview && (
-                  <span className="rounded bg-theme-surface px-2 py-1 text-[11px] font-medium text-theme-text-secondary border border-theme-border">
+                  <span className={styles.sectionCount}>
                     Total: {overview.portfolio_count}
                   </span>
                 )}
@@ -224,7 +212,7 @@ export const DashboardPage: React.FC = () => {
                 {[1, 2].map((i) => (
                   <div
                     key={i}
-                    className="p-3.5 rounded-lg bg-theme-surface/60 border border-theme-border animate-pulse h-16"
+                    className="p-3.5 rounded-lg bg-theme-surface border border-theme-border animate-pulse h-16"
                   />
                 ))}
               </div>
@@ -253,7 +241,7 @@ export const DashboardPage: React.FC = () => {
 
             {/* Empty State: Only when successfully loaded with 0 portfolios */}
             {overview && overview.portfolio_count === 0 && (
-              <div className="rounded-xl border border-dashed border-theme-border bg-theme-surface/50 p-8 text-center my-4">
+              <div className="rounded-xl border border-dashed border-theme-border bg-theme-surface p-8 text-center my-4">
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-theme-surface text-theme-text-muted mb-3 border border-theme-border">
                   <Briefcase className="h-6 w-6" />
                 </div>
@@ -273,15 +261,15 @@ export const DashboardPage: React.FC = () => {
 
             {/* Recent Portfolios List: Only when overview has portfolios */}
             {overview && overview.portfolio_count > 0 && (
-              <div className="space-y-3 my-4">
+              <div className={styles.portfolioList}>
                 {overview.recent_portfolios.map((portfolio) => (
                   <Link
                     key={portfolio.id}
                     to={`/portfolios/${portfolio.id}`}
-                    className="flex items-center justify-between p-3.5 rounded-lg bg-theme-surface border border-theme-border hover:border-theme-primary/50 transition-colors group"
+                    className={styles.portfolioRow}
                   >
                     <div className="min-w-0 pr-3">
-                      <div className="text-sm font-medium text-theme-text group-hover:text-theme-primary transition-colors truncate">
+                      <div className={styles.portfolioName}>
                         {portfolio.name}
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-theme-text-muted mt-0.5">
@@ -290,10 +278,10 @@ export const DashboardPage: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="px-2 py-0.5 rounded text-xs font-mono font-medium bg-theme-primary-subtle text-theme-primary border border-theme-primary/30">
+                      <span className={styles.currencyBadge}>
                         {portfolio.base_currency}
                       </span>
-                      <ArrowRight className="h-3.5 w-3.5 text-theme-text-muted group-hover:text-theme-primary transition-colors" />
+                      <ArrowRight className="h-3.5 w-3.5 text-theme-text-muted" />
                     </div>
                   </Link>
                 ))}
@@ -301,30 +289,28 @@ export const DashboardPage: React.FC = () => {
             )}
           </div>
 
-          <div className="pt-2 text-[11px] text-theme-text-muted border-t border-theme-border flex items-center justify-between">
+          <div className={styles.sectionFooter}>
             <span>Actual PostgreSQL portfolio records</span>
             <Link to="/portfolios/new" className="text-theme-primary hover:underline font-medium">
               + New Portfolio
             </Link>
           </div>
-        </Card>
+        </div>
 
         {/* Analytics Section (Sprint 5 Roadmap) */}
-        <Card className="border-theme-border bg-theme-card p-6 flex flex-col justify-between">
+        <div className={styles.sectionCard}>
           <div>
-            <div className="flex items-center justify-between mb-4">
+            <div className={styles.sectionHeader}>
               <div>
-                <CardTitle className="text-lg font-semibold text-theme-text">Performance Analytics</CardTitle>
-                <CardDescription className="text-xs text-theme-text-muted">
-                  CAGR, XIRR, risk engine and AI insights
-                </CardDescription>
+                <h2 className={styles.sectionTitle}>Performance Analytics</h2>
+                <span className="text-xs text-theme-text-muted">CAGR, XIRR, risk engine and AI insights</span>
               </div>
               <span className="rounded bg-theme-accent-subtle border border-theme-accent/30 px-2 py-0.5 text-[11px] font-medium text-theme-accent flex items-center gap-1">
                 <Sparkles className="h-3 w-3" /> Upcoming
               </span>
             </div>
 
-            <div className="rounded-xl border border-dashed border-theme-border bg-theme-surface/50 p-8 text-center my-4">
+            <div className="rounded-xl border border-dashed border-theme-border bg-theme-surface p-8 text-center my-4">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-theme-accent-subtle text-theme-accent border border-theme-accent/30 mb-3">
                 <BarChart3 className="h-6 w-6" />
               </div>
@@ -342,11 +328,11 @@ export const DashboardPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="pt-2 text-[11px] text-theme-text-muted border-t border-theme-border flex items-center justify-between">
+          <div className={styles.sectionFooter}>
             <span>MVP Foundation Ready</span>
             <span className="text-theme-accent font-medium">Sprint 5 Scope</span>
           </div>
-        </Card>
+        </div>
       </div>
     </div>
   );

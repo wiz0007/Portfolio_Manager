@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -16,6 +16,9 @@ const renderWithProviders = (ui: React.ReactElement) => {
 };
 
 describe('RegisterPage', () => {
+  beforeEach(() => {
+    delete (window as any).google;
+  });
   it('renders registration form elements properly', () => {
     renderWithProviders(<RegisterPage />);
 
@@ -59,11 +62,22 @@ describe('RegisterPage', () => {
   });
 
   it('handles Google sign up action', () => {
+    const requestTokenMock = vi.fn();
+    (window as any).google = {
+      accounts: {
+        oauth2: {
+          initTokenClient: vi.fn(() => ({
+            requestAccessToken: requestTokenMock,
+          })),
+        },
+      },
+    };
+
     renderWithProviders(<RegisterPage />);
 
     const googleBtn = screen.getByRole('button', { name: /sign up with google/i });
     fireEvent.click(googleBtn);
 
-    expect(screen.getByText(/google authentication is enabled/i)).toBeInTheDocument();
+    expect(requestTokenMock).toHaveBeenCalled();
   });
 });

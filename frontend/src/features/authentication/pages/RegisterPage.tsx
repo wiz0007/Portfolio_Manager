@@ -11,13 +11,12 @@ import { Input } from '@/shared/ui/Input';
 import { Label } from '@/shared/ui/Label';
 import { Card } from '@/shared/ui/Card';
 import { Alert } from '@/shared/ui/Alert';
-import { GoogleIcon } from '@/shared/ui/GoogleIcon';
+import { GoogleAuthButton } from '../components/GoogleAuthButton';
 
 export const RegisterPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [oauthNotice, setOauthNotice] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const { mutate: registerUser, isPending } = useRegister();
@@ -38,7 +37,6 @@ export const RegisterPage: React.FC = () => {
 
   const onSubmit = (data: RegisterFormData) => {
     setServerError(null);
-    setOauthNotice(null);
     registerUser(data, {
       onSuccess: () => {
         navigate('/dashboard', { replace: true });
@@ -59,24 +57,12 @@ export const RegisterPage: React.FC = () => {
     });
   };
 
-  const handleGoogleSignUp = () => {
-    setOauthNotice('Google Authentication is enabled in the authentication scope and will be connected to the backend OAuth provider.');
-  };
-
   return (
     <div className="w-full flex justify-center">
       <Card className="w-full max-w-[420px] border-theme-border bg-theme-card text-theme-text shadow-lg backdrop-blur-md p-6 sm:p-7">
         <h1 className="text-xl font-bold tracking-tight text-theme-text mb-4">
           Create an account
         </h1>
-
-        {oauthNotice && (
-          <div className="mb-4">
-            <Alert variant="info" title="Google Authentication">
-              {oauthNotice}
-            </Alert>
-          </div>
-        )}
 
         {serverError && (
           <div className="mb-4">
@@ -87,17 +73,7 @@ export const RegisterPage: React.FC = () => {
         )}
 
         {/* Google Sign Up */}
-        <Button
-          type="button"
-          variant="secondary"
-          size="md"
-          fullWidth
-          onClick={handleGoogleSignUp}
-          leftIcon={<GoogleIcon size={18} />}
-          className="font-medium text-sm border-theme-border text-theme-text hover:bg-theme-surface-hover"
-        >
-          Sign up with Google
-        </Button>
+        <GoogleAuthButton mode="signup" onError={(err) => setServerError(err)} />
 
         {/* Minimal Divider */}
         <div className="relative my-4">
