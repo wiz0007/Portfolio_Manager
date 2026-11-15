@@ -1,0 +1,147 @@
+.formContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.selectInput {
+  width: 100%;
+  height: 2.625rem;
+  padding: 0 0.875rem;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 6px);
+  color: var(--color-text);
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  cursor: pointer;
+}
+
+.selectInput:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-alpha, rgba(20, 184, 166, 0.2));
+}
+
+.textInput {
+  width: 100%;
+  height: 2.625rem;
+  padding: 0 0.875rem;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 6px);
+  color: var(--color-text);
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.textInput:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-alpha, rgba(20, 184, 166, 0.2));
+}
+
+.textareaInput {
+  width: 100%;
+  min-height: 5rem;
+  padding: 0.75rem 0.875rem;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 6px);
+  color: var(--color-text);
+  font-size: 0.875rem;
+  font-family: inherit;
+  outline: none;
+  resize: vertical;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.textareaInput:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-alpha, rgba(20, 184, 166, 0.2));
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text);
+  cursor: pointer;
+  user-select: none;
+  padding: 0.5rem 0;
+}
+
+.checkboxInput {
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: var(--radius-xs, 4px);
+  accent-color: var(--color-primary, #0d9488);
+  cursor: pointer;
+}
+
+.previewCard {
+  background: linear-gradient(135deg, rgba(13, 148, 136, 0.08), rgba(6, 182, 212, 0.05));
+  border: 1px solid var(--color-primary-alpha, rgba(20, 184, 166, 0.3));
+  border-radius: var(--radius-lg, 10px);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.previewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.previewTitle {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-primary, #0d9488);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.previewBadge {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  background-color: var(--color-primary-alpha, rgba(20, 184, 166, 0.15));
+  color: var(--color-primary, #0d9488);
+  border-radius: var(--radius-full, 9999px);
+  font-weight: 500;
+}
+
+.previewGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+}
+
+.previewItem {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.previewItemLabel {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.previewItemValue {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.previewItemSub {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}

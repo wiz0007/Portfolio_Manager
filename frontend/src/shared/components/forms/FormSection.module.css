@@ -1,0 +1,46 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+  background-color: var(--color-surface);
+  border-radius: var(--radius-lg, 10px);
+  box-shadow: var(--shadow-sm);
+  width: 100%;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.description {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.contentGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .contentGrid2Col {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .contentGrid3Col {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}

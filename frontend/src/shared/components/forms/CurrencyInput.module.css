@@ -1,0 +1,61 @@
+.inputContainer {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.prefixSymbol {
+  position: absolute;
+  left: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  pointer-events: none;
+  user-select: none;
+}
+
+.currencyField {
+  width: 100%;
+  height: 2.5rem;
+  padding: 0.5rem 0.75rem 0.5rem 2rem;
+  font-size: 0.875rem;
+  font-family: var(--font-family-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  color: var(--color-text);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+  outline: none;
+}
+
+.currencyField:hover:not(:disabled) {
+  border-color: var(--color-text-muted);
+}
+
+.currencyField:focus-visible {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(var(--color-primary-rgb, 15, 36, 58), 0.15);
+}
+
+.currencyField:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: var(--color-bg);
+}
+
+.invalid {
+  border-color: rgb(248, 113, 113) !important;
+}
+
+.suffixCode {
+  position: absolute;
+  right: 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  pointer-events: none;
+  user-select: none;
+}
