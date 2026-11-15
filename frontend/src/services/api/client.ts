@@ -65,17 +65,38 @@ async function request<T>(
   const data = isJson ? await response.json() : await response.text();
 
   if (!response.ok) {
-    let errorMessage = 'An unexpected error occurred';
+    let errorMessage = `Server error (${response.status})`;
     if (data && typeof data === 'object') {
       if (data.detail) {
         errorMessage = Array.isArray(data.detail) ? data.detail.join(' ') : String(data.detail);
       } else if (data.message) {
         errorMessage = String(data.message);
+      } else if (data.error) {
+        errorMessage = String(data.error);
       } else {
-        const firstKey = Object.keys(data)[0];
-        if (firstKey && Array.isArray(data[firstKey])) {
-          errorMessage = `${firstKey}: ${data[firstKey].join(', ')}`;
+        const entries = Object.entries(data);
+        if (entries.length > 0) {
+          const [key, val] = entries[0];
+          if (Array.isArray(val)) {
+            errorMessage = `${key}: ${val.join(', ')}`;
+          } else if (typeof val === 'object' && val !== null) {
+            const subEntries = Object.entries(val);
+            if (subEntries.length > 0) {
+              const [subKey, subVal] = subEntries[0];
+              errorMessage = `${key}.${subKey}: ${Array.isArray(subVal) ? subVal.join(', ') : subVal}`;
+            } else {
+              errorMessage = `${key}: Invalid value`;
+            }
+          } else {
+            errorMessage = `${key}: ${val}`;
+          }
         }
+      }
+    } else if (typeof data === 'string' && data.trim()) {
+      if (data.includes('<html') || data.includes('<!DOCTYPE')) {
+        errorMessage = `Internal Server Error (${response.status}). Check backend server logs.`;
+      } else {
+        errorMessage = data.slice(0, 300);
       }
     }
     throw new ApiClientError(errorMessage, response.status, data);

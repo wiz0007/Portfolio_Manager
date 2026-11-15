@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Briefcase,
   Edit2,
+  Plus,
   Calendar,
   Layers,
   Clock,
@@ -11,6 +12,8 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { usePortfolio } from '../hooks/usePortfolios';
+import { useInvestments } from '@/features/investments/hooks/useInvestments';
+import { HoldingsList } from '@/features/investments/components';
 import { Card, CardTitle } from '@/shared/ui/Card';
 import { Button } from '@/shared/ui/Button';
 
@@ -18,6 +21,7 @@ export const PortfolioDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: portfolio, isLoading, isError } = usePortfolio(id || '');
+  const { data: investments, isLoading: isLoadingInvestments } = useInvestments(id || '');
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return '';
@@ -99,13 +103,22 @@ export const PortfolioDetailPage: React.FC = () => {
             </div>
           </div>
 
-          <Button
-            onClick={() => navigate(`/portfolios/${portfolio.id}/edit`)}
-            variant="outline"
-            className="text-theme-text border-theme-border hover:bg-theme-hover shrink-0"
-          >
-            <Edit2 className="mr-2 h-4 w-4" /> Edit Portfolio
-          </Button>
+          <div className="flex items-center gap-2.5">
+            <Button
+              onClick={() => navigate(`/investments/new?portfolioId=${portfolio.id}`)}
+              variant="primary"
+              className="shrink-0"
+            >
+              <Plus className="mr-1.5 h-4 w-4" /> Add Investment
+            </Button>
+            <Button
+              onClick={() => navigate(`/portfolios/${portfolio.id}/edit`)}
+              variant="outline"
+              className="text-theme-text border-theme-border hover:bg-theme-hover shrink-0"
+            >
+              <Edit2 className="mr-2 h-4 w-4" /> Edit Portfolio
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -122,18 +135,24 @@ export const PortfolioDetailPage: React.FC = () => {
       </Card>
 
       {/* Holdings & Instruments Section */}
-      <Card className="border-theme-border bg-theme-card/60 border-dashed p-10 text-center space-y-3">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-theme-surface text-theme-text-muted border border-theme-border">
-          <Layers className="h-6 w-6" />
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-theme-text flex items-center gap-2">
+            <Layers className="h-5 w-5 text-theme-primary" />
+            <span>Portfolio Holdings</span>
+          </h2>
+          <span className="text-xs text-theme-text-muted font-mono">
+            ID: {portfolio.id}
+          </span>
         </div>
-        <h3 className="text-base font-semibold text-theme-text">Holdings & Assets</h3>
-        <p className="mx-auto max-w-lg text-xs text-theme-text-muted leading-relaxed">
-          Asset tracking, instrument management, transaction ledger, and real-time market valuations are scheduled for Sprint 5.
-        </p>
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-theme-surface border border-theme-border text-[11px] text-theme-text-secondary font-mono">
-          Container ID: {portfolio.id}
-        </div>
-      </Card>
+
+        <HoldingsList
+          portfolioId={portfolio.id}
+          baseCurrency={portfolio.base_currency}
+          investments={investments || []}
+          isLoading={isLoadingInvestments}
+        />
+      </div>
     </div>
   );
 };

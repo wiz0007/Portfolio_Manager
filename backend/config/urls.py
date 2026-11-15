@@ -24,6 +24,9 @@ urlpatterns = [
     # Portfolios API v1
     path('api/v1/portfolios/', include('apps.portfolios.api.v1.urls')),
 
+    # Assets & Investments API v1
+    path('api/v1/', include('apps.assets.api.v1.urls')),
+
     # OpenAPI Documentation
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
