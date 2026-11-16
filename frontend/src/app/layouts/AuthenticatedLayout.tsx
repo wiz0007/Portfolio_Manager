@@ -12,6 +12,7 @@ import {
   X,
   TrendingUp,
   Database,
+  Globe,
 } from 'lucide-react';
 import { useCurrentUser, useLogout } from '@/features/authentication/hooks/useAuth';
 import { useHealthCheck } from '@/shared/hooks/useHealth';
@@ -49,6 +50,7 @@ export const AuthenticatedLayout: React.FC = () => {
   const navItems = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { label: 'Portfolios', path: '/portfolios', icon: Briefcase },
+    { label: 'Markets', path: '/markets', icon: Globe },
     { label: 'Analytics', path: '/analytics', icon: BarChart3 },
     { label: 'Watchlist', path: '/watchlist', icon: Eye },
   ];
@@ -63,6 +65,7 @@ export const AuthenticatedLayout: React.FC = () => {
     const currentPath = location.pathname;
     if (currentPath.startsWith('/dashboard')) return 'Dashboard Overview';
     if (currentPath.startsWith('/portfolios')) return 'Portfolios';
+    if (currentPath.startsWith('/markets')) return 'Market Intelligence';
     if (currentPath.startsWith('/analytics')) return 'Analytics & Insights';
     if (currentPath.startsWith('/watchlist')) return 'Watchlist';
     if (currentPath.startsWith('/settings/profile')) return 'Profile Settings';

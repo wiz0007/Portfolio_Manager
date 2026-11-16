@@ -43,6 +43,15 @@ class Investment(models.Model):
         related_name='investments',
         db_index=True,
     )
+    instrument = models.ForeignKey(
+        'market_data.Instrument',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='investments',
+        db_index=True,
+        help_text='Associated standardized market instrument, if market-linked.',
+    )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,

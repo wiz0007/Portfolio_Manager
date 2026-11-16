@@ -32,10 +32,28 @@
 | **INV-004** | Investments | `PATCH` | `/api/v1/portfolios/{portfolio_id}/investments/{id}/` | Partial update holding & details | Session | `Investment`, Detail | `apps/assets/tests/test_investment_api.py`, `test_asset_lifecycle.py` | Verified |
 | **INV-005** | Investments | `DELETE` | `/api/v1/portfolios/{portfolio_id}/investments/{id}/` | Remove holding and cascades | Session | `Investment`, Detail, `InvestmentTransaction`, `InvestmentValuation` | `apps/assets/tests/test_investment_api.py`, `test_asset_lifecycle.py` | Verified |
 | **INV-006** | Investments | `GET/POST` | `/api/v1/investments/` | Global holdings list & creation | Session | `Investment`, Detail | `tests/contract/test_api_contracts.py` | Verified |
+| **INS-001** | Market Data | `GET` | `/api/v1/instruments/` | List and filter market instruments | Session | `Instrument` | `apps/market_data/tests/test_market_data_api.py` | Verified |
+| **INS-002** | Market Data | `GET` | `/api/v1/instruments/search/` | Fuzzy search instruments by symbol/name | Session | `Instrument` | `apps/market_data/tests/test_market_data_api.py` | Verified |
+| **INS-003** | Market Data | `GET` | `/api/v1/instruments/{id}/` | Retrieve instrument details & ref data | Session | `Instrument`, `InstrumentReferenceData` | `apps/market_data/tests/test_market_data_api.py` | Verified |
+| **MKT-001** | Market Data | `GET` | `/api/v1/market-data/quotes/{id}/` | Latest quote (single or bulk by symbols) | Session | `MarketDataPoint` | `apps/market_data/tests/test_market_data_api.py` | Verified |
+| **MKT-002** | Market Data | `GET` | `/api/v1/market-data/history/{id}/` | Historical timeseries with range/interval | Session | `MarketDataPoint` | `apps/market_data/tests/test_market_data_api.py` | Verified |
+| **MKT-003** | Market Data | `GET` | `/api/v1/market-data/providers/` | List providers and capabilities | Session | None | `apps/market_data/tests/test_market_data_api.py` | Verified |
+| **MKT-004** | Market Data | `GET` | `/api/v1/market-data/health/` | Provider health and credential status | Session | None | `apps/market_data/tests/test_market_data_api.py` | Verified |
+| **MKT-005** | Market Data | `GET` | `/api/v1/market-data/overview/` | Market summary (indices, stocks, funds) | Session | `Instrument`, `MarketDataPoint` | `apps/market_data/tests/test_market_data_api.py` | Verified |
 
 ---
 
 ## 2. Test Identifier Traceability Reference
+
+- **`INS-001-S01`**: Listing active instruments filters delisted items and filters by asset class (`EQUITY`, `MUTUAL_FUND`).
+- **`INS-002-S01`**: Fuzzy search matches symbol (`RELI`), company name (`Consultancy`), or ISIN (`INF879O01018`).
+- **`INS-003-S01`**: Instrument detail returns associated `InstrumentReferenceData` and latest quote.
+- **`MKT-001-S01`**: Latest quote returns normalized Decimal price, timestamp, and synthetic indicator.
+- **`MKT-001-S02`**: Bulk quotes endpoint returns dictionary of quotes for requested symbols.
+- **`MKT-002-S01`**: Historical timeseries returns ordered OHLCV data points with valid ranges.
+- **`MKT-003-S01`**: Provider registry maps asset classes and respects application mode (`DEMO` vs `PRODUCTION`).
+- **`MKT-004-S01`**: Provider health endpoint reports DEMO provider healthy and TrueData in `PENDING_CREDENTIALS` mode.
+- **`MKT-005-S01`**: Deterministic synthetic generator reproduces researched November 2026 price anchors and sets `is_synthetic=True`.
 
 - **`SYS-001-S01`**: Health check returns `200 OK` with database connected.
 - **`SYS-001-E01`**: Health check returns `503 Service Unavailable` on DB drop without secret exposure.
