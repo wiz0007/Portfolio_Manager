@@ -209,3 +209,10 @@ DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@portfoliomanager.l
 FRONTEND_BASE_URL = os.getenv('FRONTEND_BASE_URL', 'http://localhost:5173')
 EMAIL_VERIFICATION_TIMEOUT = int(os.getenv('EMAIL_VERIFICATION_TIMEOUT', '1800'))
 
+# Market Data Configuration (Sprint 3)
+MARKET_DATA_PROVIDER_MODE = os.getenv('MARKET_DATA_PROVIDER_MODE', 'DEMO')  # 'DEMO' or 'PRODUCTION'
+TRUEDATA_API_KEY = os.getenv('TRUEDATA_API_KEY', '')
+TRUEDATA_USERNAME = os.getenv('TRUEDATA_USERNAME', '')
+MARKET_DATA_CACHE_TIMEOUT = int(os.getenv('MARKET_DATA_CACHE_TIMEOUT', '900'))  # 15 mins default
+
+

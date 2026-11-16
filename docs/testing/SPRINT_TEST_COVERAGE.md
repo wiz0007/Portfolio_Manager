@@ -63,7 +63,42 @@
 
 ---
 
-## 4. Known Regressions & Permanent Protection
+## 4. Sprint 3 Coverage Matrix (Market Data Infrastructure & Demo System)
+
+### 4.1 Models, Normalization & Persistence
+- **Models Implemented:** `Instrument`, `ProviderInstrumentMapping`, `InstrumentReferenceData`, `MarketDataPoint`.
+- **Investment-Instrument Link:** Nullable `Investment.instrument` foreign key added without breaking non-market investments.
+- **Precision:** Strict `DecimalField(max_digits=18, decimal_places=4)` across all prices and quotes.
+- **Timestamps:** UTC normalized timestamps on all `MarketDataPoint` records.
+
+### 4.2 Provider Abstraction & Synthetic Demo System
+- **`BaseMarketDataProvider`**: Canonical adapter contract for quotes, history, and health.
+- **`ProviderRegistry`**: Dynamic provider routing by asset class and system mode (`DEMO` vs `PRODUCTION`).
+- **`DemoMarketDataProvider`**: Deterministic synthetic generator anchored to researched November 2026 Indian stock prices (NIFTY 50 @ 25,265.60, Reliance @ 1,344.80, TCS @ 2,405.00, HDFC Bank @ 813.50, Infosys @ 1,145.90, PPFAS @ 94.2590, Gold @ 7,850.00).
+- **`AMFIMarketDataProvider`**: Mutual fund NAV provider with online/offline fallback.
+- **`TrueDataMarketDataProvider`**: Scaffolded adapter reporting `PENDING_CREDENTIALS` until live keys are supplied.
+- **Idempotent Management Command:** `python manage.py seed_demo_market_data`.
+
+### 4.3 REST API Endpoints Verified
+- `GET /api/v1/instruments/` (INS-001)
+- `GET /api/v1/instruments/search/?q=` (INS-002)
+- `GET /api/v1/instruments/{id}/` (INS-003)
+- `GET /api/v1/market-data/quotes/{id}/` & `?symbols=` (MKT-001)
+- `GET /api/v1/market-data/history/{id}/` (MKT-002)
+- `GET /api/v1/market-data/providers/` (MKT-003)
+- `GET /api/v1/market-data/health/` (MKT-004)
+- `GET /api/v1/market-data/overview/` (MKT-005)
+
+### 4.4 Frontend Components Verified
+- `DemoBadge`: "DEMO DATA — Synthetic prices, not live market quotations" badge & banner.
+- `QuoteCard`: Dynamic price, change percent, and visual indicators.
+- `InstrumentSearch`: Real-time debounced instrument finder.
+- `PriceChart`: Interactive SVG area chart with timeframe filters (1W, 1M, 3M, 1Y, ALL).
+- `MarketOverviewPage`: Responsive market dashboard at `/markets`.
+
+---
+
+## 5. Known Regressions & Permanent Protection
 1. **Dropdown Menu Breakout**: Fixed SearchSelect container CSS scoping to guarantee proper anchor positioning.
 2. **Unsupported Asset Type: Listed Stocks**: Mapped `listed_stock` to `StockForm.tsx`.
 3. **Unsupported Asset Type: Land / Plot**: Dedicated `AgriculturalLandForm.tsx` mapped to `land_plot`.

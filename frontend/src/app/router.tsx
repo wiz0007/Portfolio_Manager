@@ -9,6 +9,7 @@ import { PortfolioCreatePage } from '@/features/portfolios/pages/PortfolioCreate
 import { PortfolioDetailPage } from '@/features/portfolios/pages/PortfolioDetailPage';
 import { PortfolioEditPage } from '@/features/portfolios/pages/PortfolioEditPage';
 import { InvestmentCreatePage } from '@/features/investments/pages/InvestmentCreatePage';
+import { MarketOverviewPage } from '@/features/market-data/pages/MarketOverviewPage';
 import { ProfilePage } from '@/features/settings/pages/ProfilePage';
 import { AccountPage } from '@/features/settings/pages/AccountPage';
 import { AnalyticsPlaceholderPage } from '@/features/analytics/pages/AnalyticsPlaceholderPage';
@@ -37,6 +38,7 @@ export const AppRouter: React.FC = () => {
           <Route path="/portfolios/new" element={<PortfolioCreatePage />} />
           <Route path="/portfolios/:id" element={<PortfolioDetailPage />} />
           <Route path="/portfolios/:id/edit" element={<PortfolioEditPage />} />
+          <Route path="/markets" element={<MarketOverviewPage />} />
           <Route path="/investments/new" element={<InvestmentCreatePage />} />
           <Route path="/analytics" element={<AnalyticsPlaceholderPage />} />
           <Route path="/watchlist" element={<WatchlistPlaceholderPage />} />
