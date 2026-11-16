@@ -9,8 +9,8 @@ from apps.market_data.models.reference_data import (
 __all__ = [
     'AssetClass',
     'Instrument',
-    'MarketCapCategory',
     'InstrumentReferenceData',
-    'ProviderInstrumentMapping',
+    'MarketCapCategory',
     'MarketDataPoint',
+    'ProviderInstrumentMapping',
 ]

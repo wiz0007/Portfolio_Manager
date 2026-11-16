@@ -1,7 +1,6 @@
 import os
 from datetime import date, datetime, timezone
-from decimal import Decimal
-from typing import Dict, List, Optional
+from typing import List
 
 from django.conf import settings
 

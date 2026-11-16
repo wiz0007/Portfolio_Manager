@@ -1,5 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
+from datetime import datetime, timedelta, timezone
 
 from django.db.models import Q
 from rest_framework import permissions, status, viewsets
@@ -13,7 +12,6 @@ from apps.market_data.api.v1.serializers import (
     QuoteSerializer,
 )
 from apps.market_data.models.instrument import Instrument
-from apps.market_data.models.market_data_point import MarketDataPoint
 from apps.market_data.providers.registry import provider_registry
 from apps.market_data.services.market_data_service import MarketDataService
 

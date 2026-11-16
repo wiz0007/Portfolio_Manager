@@ -1,8 +1,7 @@
 import hashlib
-import math
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from apps.market_data.providers.base import (
     BaseMarketDataProvider,

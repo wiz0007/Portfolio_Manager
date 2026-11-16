@@ -1,7 +1,10 @@
 import uuid
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from django.db import models
+
+if TYPE_CHECKING:
+    from apps.market_data.models.market_data_point import MarketDataPoint
 
 
 class AssetClass(models.TextChoices):

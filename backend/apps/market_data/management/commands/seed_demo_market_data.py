@@ -1,5 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
+from datetime import datetime, timedelta, timezone
 
 from django.core.management.base import BaseCommand
 

@@ -1,6 +1,5 @@
 import logging
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from django.conf import settings

@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -7,15 +7,12 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from apps.market_data.models.instrument import AssetClass, Instrument
-from apps.market_data.models.market_data_point import MarketDataPoint
-from apps.market_data.models.provider_mapping import ProviderInstrumentMapping
 from apps.market_data.models.reference_data import (
     InstrumentReferenceData,
     MarketCapCategory,
 )
 from apps.market_data.providers.demo_provider import DemoMarketDataProvider
 from apps.market_data.providers.registry import provider_registry
-from apps.market_data.services.market_data_service import MarketDataService
 
 User = get_user_model()
 
@@ -226,6 +223,9 @@ class TestMarketDataAPI:
         # In default DEMO mode, DEMO provider handles requests
         prov_rel = provider_registry.get_provider_for_instrument(reliance)
         assert prov_rel.provider_name == 'DEMO'
+
+        prov_ppfas = provider_registry.get_provider_for_instrument(ppfas)
+        assert prov_ppfas.provider_name in ['AMFI', 'DEMO']
 
         # Provider list contains DEMO, AMFI, TRUEDATA
         providers = provider_registry.list_providers()
