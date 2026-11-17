@@ -44,6 +44,13 @@
 | **VAL-002** | Valuation History | `GET/POST` | `/api/v1/investments/{id}/valuations/` | Chronological snapshots & manual valuation entry | Session | `InvestmentValuation`, `Investment` | `apps/valuation/tests/test_valuation_engine.py`, `test_valuation_history.py` | Verified |
 | **VAL-003** | Holding Performance | `GET` | `/api/v1/investments/{id}/performance/` | Authoritative cost basis, current value & gain % | Session | `Investment`, `InvestmentValuation` | `apps/valuation/tests/test_valuation_engine.py`, `test_valuation_history.py` | Verified |
 | **PROJ-001** | Future Projections | `POST` | `/api/v1/investments/{id}/projections/calculate/` | Pure deterministic calculation of growth schedules | Session | None (Read-only simulation) | `apps/valuation/tests/test_projection_engine.py` | Verified |
+| **WCH-001** | Watchlists | `GET` | `/api/v1/watchlist/` | List user watchlist items with live prices & movement | Session | `WatchlistItem` | `apps/watchlists/tests/test_watchlist_domain.py` | Verified |
+| **WCH-002** | Watchlists | `POST` | `/api/v1/watchlist/` | Add canonical instrument to user watchlist | Session | `WatchlistItem` | `apps/watchlists/tests/test_watchlist_domain.py` | Verified |
+| **WCH-003** | Watchlists | `GET` | `/api/v1/watchlist/{id}/` | Retrieve single user watchlist item detail | Session | `WatchlistItem` | `apps/watchlists/tests/test_watchlist_domain.py` | Verified |
+| **WCH-004** | Watchlists | `DELETE` | `/api/v1/watchlist/{id}/` | Remove item without touching instrument or investments | Session | `WatchlistItem` | `apps/watchlists/tests/test_watchlist_domain.py` | Verified |
+| **INS-004** | Market Data | `GET` | `/api/v1/instruments/{id}/market-data/latest/` | Authoritative resolved price and 24h movement | Session | `PriceObservation`, `MarketDataPoint` | `apps/market_data/tests/test_market_history_service.py` | Verified |
+| **INS-005** | Market Data | `GET` | `/api/v1/instruments/{id}/market-data/history/` | Chronological historical timeseries observations | Session | `PriceObservation`, `MarketDataPoint` | `apps/market_data/tests/test_market_history_service.py` | Verified |
+| **INS-006** | Market Data | `GET` | `/api/v1/instruments/{id}/market-data/status/` | Market coverage policy and observation freshness | Session | `InstrumentCoverage` | `apps/market_data/tests/test_market_history_service.py` | Verified |
 
 ---
 

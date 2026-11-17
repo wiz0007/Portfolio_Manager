@@ -42,9 +42,12 @@ export interface Instrument {
   symbol: string;
   name: string;
   asset_class: AssetClassType;
+  product_type?: string;
   exchange: string;
   currency: string;
   isin?: string | null;
+  scheme_code?: string | null;
+  status?: string;
   is_active: boolean;
   reference_data?: InstrumentReferenceData | null;
   latest_quote?: MarketQuote | null;

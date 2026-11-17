@@ -1,0 +1,12 @@
+export * from './types';
+export * from './api/watchlistApi';
+export * from './hooks/useWatchlist';
+export * from './components/PriceFreshnessBadge';
+export { PriceMovement as PriceMovementDisplay } from './components/PriceMovement';
+export * from './components/WatchlistEmptyState';
+export * from './components/AddToWatchlistModal';
+export * from './components/WatchlistTable';
+export * from './components/WatchlistCard';
+export * from './components/InstrumentPriceChart';
+export * from './pages/WatchlistPage';
+export * from './pages/InstrumentDetailPage';

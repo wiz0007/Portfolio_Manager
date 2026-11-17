@@ -33,6 +33,10 @@ urlpatterns = [
     # Valuation & Projection Engine API v1
     path('api/v1/', include('apps.valuation.api.v1.urls')),
 
+    # Watchlists API v1
+    path('api/v1/watchlist/', include('apps.watchlists.api.v1.urls')),
+    path('api/v1/watchlists/', include('apps.watchlists.api.v1.urls')),
+
     # OpenAPI Documentation
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
