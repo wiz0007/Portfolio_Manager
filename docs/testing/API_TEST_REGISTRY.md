@@ -40,6 +40,10 @@
 | **MKT-003** | Market Data | `GET` | `/api/v1/market-data/providers/` | List providers and capabilities | Session | None | `apps/market_data/tests/test_market_data_api.py` | Verified |
 | **MKT-004** | Market Data | `GET` | `/api/v1/market-data/health/` | Provider health and credential status | Session | None | `apps/market_data/tests/test_market_data_api.py` | Verified |
 | **MKT-005** | Market Data | `GET` | `/api/v1/market-data/overview/` | Market summary (indices, stocks, funds) | Session | `Instrument`, `MarketDataPoint` | `apps/market_data/tests/test_market_data_api.py` | Verified |
+| **VAL-001** | Valuation Engine | `POST` | `/api/v1/investments/{id}/valuations/calculate/` | Re-evaluates asset strategy & records snapshot | Session | `InvestmentValuation`, `Investment` | `apps/valuation/tests/test_valuation_engine.py` | Verified |
+| **VAL-002** | Valuation History | `GET/POST` | `/api/v1/investments/{id}/valuations/` | Chronological snapshots & manual valuation entry | Session | `InvestmentValuation`, `Investment` | `apps/valuation/tests/test_valuation_engine.py`, `test_valuation_history.py` | Verified |
+| **VAL-003** | Holding Performance | `GET` | `/api/v1/investments/{id}/performance/` | Authoritative cost basis, current value & gain % | Session | `Investment`, `InvestmentValuation` | `apps/valuation/tests/test_valuation_engine.py`, `test_valuation_history.py` | Verified |
+| **PROJ-001** | Future Projections | `POST` | `/api/v1/investments/{id}/projections/calculate/` | Pure deterministic calculation of growth schedules | Session | None (Read-only simulation) | `apps/valuation/tests/test_projection_engine.py` | Verified |
 
 ---
 
@@ -76,3 +80,12 @@
 - **`INV-001-S09`**: Creates crypto token with network transaction hash.
 - **`INV-ATOM-01`**: Atomic rollback guarantees zero orphaned records on write failure.
 - **`INV-SEC-01`**: Cross-user and cross-portfolio requests return `404 Not Found`.
+
+### Sprint 4 Valuation & Future-Value Projection API Lifecycle
+- **`VAL-001-S01`**: `POST /api/v1/investments/{id}/valuations/calculate/` calculates deterministic asset valuation and creates immutable snapshot.
+- **`VAL-002-S01`**: `POST /api/v1/investments/{id}/valuations/` records manual valuation snapshot and synchronizes `current_value`.
+- **`VAL-003-S01`**: `GET /api/v1/investments/{id}/valuations/` returns chronological valuation snapshot audit history.
+- **`VAL-004-S01`**: `GET /api/v1/investments/{id}/performance/` returns holding acquisition cost, current value, absolute and percentage return.
+- **`PROJ-001-S01`**: `POST /api/v1/investments/{id}/projections/calculate/` calculates deterministic scenarios (Conservative, Base, Optimistic, Custom) without mutating investment.
+- **`SEC-PATCH-01`**: Rejects attempted injection or modification of `id`, `portfolio`, `user`, or `investment_id` via PATCH.
+- **`SEC-BOOL-01`**: Strict boolean validation rejects ambiguous truthy/falsy strings without `bool('false') == True` bug.

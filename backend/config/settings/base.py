@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'apps.assets',
     'apps.transactions',
     'apps.market_data',
+    'apps.valuation',
     'apps.analytics',
     'apps.ai_insights',
     'apps.watchlists',

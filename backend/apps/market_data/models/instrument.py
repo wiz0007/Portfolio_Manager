@@ -18,6 +18,14 @@ class AssetClass(models.TextChoices):
     CASH_EQUIVALENT = 'CASH_EQUIVALENT', 'Cash Equivalent'
 
 
+class InstrumentStatus(models.TextChoices):
+    ACTIVE = 'ACTIVE', 'Active'
+    SUSPENDED = 'SUSPENDED', 'Suspended'
+    MATURED = 'MATURED', 'Matured'
+    DELISTED = 'DELISTED', 'Delisted'
+    INACTIVE = 'INACTIVE', 'Inactive'
+
+
 class Instrument(models.Model):
     """
     Standardized, provider-independent financial instrument definition.
@@ -33,10 +41,20 @@ class Instrument(models.Model):
         default=AssetClass.EQUITY,
         db_index=True,
     )
+    product_type = models.CharField(max_length=64, blank=True, default='', db_index=True)
     exchange = models.CharField(max_length=32, blank=True, default='', db_index=True)
     currency = models.CharField(max_length=10, default='INR')
     isin = models.CharField(max_length=32, blank=True, null=True, unique=True)
+    scheme_code = models.CharField(max_length=32, blank=True, null=True, db_index=True)
+    security_code = models.CharField(max_length=32, blank=True, null=True, db_index=True)
+    status = models.CharField(
+        max_length=32,
+        choices=InstrumentStatus.choices,
+        default=InstrumentStatus.ACTIVE,
+        db_index=True,
+    )
     is_active = models.BooleanField(default=True, db_index=True)
+    metadata = models.JSONField(default=dict, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -47,8 +65,20 @@ class Instrument(models.Model):
         indexes = [
             models.Index(fields=['symbol', 'exchange'], name='inst_sym_exch_idx'),
             models.Index(fields=['asset_class', 'is_active'], name='inst_class_active_idx'),
+            models.Index(fields=['status'], name='inst_status_idx'),
             models.Index(fields=['name'], name='inst_name_idx'),
+            models.Index(fields=['scheme_code'], name='inst_scheme_idx'),
         ]
+
+    def save(self, *args, **kwargs):
+        # Keep is_active and status synchronized bidirectionally
+        if not self.is_active and self.status == InstrumentStatus.ACTIVE:
+            self.status = InstrumentStatus.INACTIVE
+        elif self.status != InstrumentStatus.ACTIVE:
+            self.is_active = False
+        else:
+            self.is_active = True
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         exchange_str = f" ({self.exchange})" if self.exchange else ""

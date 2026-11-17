@@ -3,6 +3,8 @@ import { Search, Loader2, X, TrendingUp } from 'lucide-react';
 import { marketDataApi } from '../api/marketDataApi';
 import { Instrument } from '../types';
 
+import { InstrumentRequestModal } from './InstrumentRequestModal';
+
 interface InstrumentSearchProps {
   onSelect: (instrument: Instrument) => void;
   placeholder?: string;
@@ -21,6 +23,7 @@ export const InstrumentSearch: React.FC<InstrumentSearchProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -185,11 +188,27 @@ export const InstrumentSearch: React.FC<InstrumentSearchProps> = ({
             })
           ) : (
             <div className="p-4 text-center text-sm text-theme-text-muted">
-              No matching instruments found for "{query}".
+              <div>No matching instruments found for "{query}".</div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  setIsRequestModalOpen(true);
+                }}
+                className="mt-2 text-xs font-semibold text-theme-primary hover:underline focus:outline-none"
+              >
+                + Request unlisted instrument addition
+              </button>
             </div>
           )}
         </div>
       )}
+
+      <InstrumentRequestModal
+        isOpen={isRequestModalOpen}
+        onClose={() => setIsRequestModalOpen(false)}
+        initialQuery={query}
+      />
     </div>
   );
 };

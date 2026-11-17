@@ -21,6 +21,7 @@ describe('Financial Calculators', () => {
 
       expect(result.maturityAmount).toBeCloseTo(107291.6, 0);
       expect(result.totalInterestEarned).toBeCloseTo(7291.6, 0);
+      expect(result.effectiveAnnualYieldPct).toBeCloseTo(7.29, 2);
       expect(result.tenureInYears).toBe(1);
     });
 

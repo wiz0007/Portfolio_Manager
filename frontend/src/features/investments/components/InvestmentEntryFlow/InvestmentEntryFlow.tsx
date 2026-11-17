@@ -38,6 +38,9 @@ export interface InvestmentEntryFlowProps {
   initialPortfolioId?: string;
   initialCategoryId?: string;
   initialTypeId?: string;
+  initialInstrumentId?: string;
+  initialSymbol?: string;
+  initialName?: string;
   onNavigateStep?: (params: { portfolioId?: string; category?: string; type?: string }) => void;
   isLoadingPortfolios?: boolean;
 }
@@ -47,6 +50,9 @@ export const InvestmentEntryFlow: React.FC<InvestmentEntryFlowProps> = ({
   initialPortfolioId,
   initialCategoryId,
   initialTypeId,
+  initialInstrumentId,
+  initialSymbol,
+  initialName,
   onNavigateStep,
   isLoadingPortfolios = false,
 }) => {
@@ -100,7 +106,23 @@ export const InvestmentEntryFlow: React.FC<InvestmentEntryFlowProps> = ({
   const [selectedPortfolio, setSelectedPortfolio] = useState<Portfolio | null>(initialPortfolio);
   const [selectedCategory, setSelectedCategory] = useState<AssetCategoryConfig | null>(initialCategory);
   const [selectedType, setSelectedType] = useState<AssetTypeConfig | null>(initialType);
-  const [formData, setFormData] = useState<Record<string, any>>({});
+  const [formData, setFormData] = useState<Record<string, any>>(() => {
+    const init: Record<string, any> = {};
+    if (initialSymbol) {
+      init.symbol = initialSymbol;
+    }
+    if (initialName) {
+      init.company_name = initialName;
+      init.scheme_name = initialName;
+      init.account_nickname = initialName;
+      init.property_name = initialName;
+    }
+    if (initialInstrumentId) {
+      init.instrument = initialInstrumentId;
+      init.instrument_id = initialInstrumentId;
+    }
+    return init;
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const createInvestmentMutation = useCreateInvestment();
@@ -125,12 +147,31 @@ export const InvestmentEntryFlow: React.FC<InvestmentEntryFlowProps> = ({
   };
 
   const handleSelectCategory = (category: AssetCategoryConfig) => {
+    if (selectedCategory?.id !== category.id) {
+      setSelectedType(null);
+      setFormData((prev) => {
+        const preserved: Record<string, any> = {};
+        if (prev.portfolio_id) preserved.portfolio_id = prev.portfolio_id;
+        if (prev.currency) preserved.currency = prev.currency;
+        if (prev.notes) preserved.notes = prev.notes;
+        return preserved;
+      });
+    }
     setSelectedCategory(category);
     onNavigateStep?.({ portfolioId: selectedPortfolio?.id, category: category.id });
     setStep('type');
   };
 
   const handleSelectType = (type: AssetTypeConfig) => {
+    if (selectedType?.id !== type.id) {
+      setFormData((prev) => {
+        const preserved: Record<string, any> = {};
+        if (prev.portfolio_id) preserved.portfolio_id = prev.portfolio_id;
+        if (prev.currency) preserved.currency = prev.currency;
+        if (prev.notes) preserved.notes = prev.notes;
+        return preserved;
+      });
+    }
     setSelectedType(type);
     onNavigateStep?.({
       portfolioId: selectedPortfolio?.id,
@@ -141,7 +182,11 @@ export const InvestmentEntryFlow: React.FC<InvestmentEntryFlowProps> = ({
   };
 
   const handleFormSubmit = (data: Record<string, any>) => {
-    setFormData(data);
+    setFormData((prev) => ({
+      ...prev,
+      ...data,
+      ...(initialInstrumentId ? { instrument: initialInstrumentId, instrument_id: initialInstrumentId } : {}),
+    }));
     setSubmitError(null);
     setStep('review');
   };
@@ -154,6 +199,7 @@ export const InvestmentEntryFlow: React.FC<InvestmentEntryFlowProps> = ({
     try {
       await createInvestmentMutation.mutateAsync({
         portfolio: selectedPortfolio.id,
+        instrument: initialInstrumentId || formData.instrument || formData.instrument_id || undefined,
         category: selectedCategory.id,
         asset_type: selectedType.id,
         currency: formData.currency || selectedPortfolio.base_currency || 'INR',
@@ -163,12 +209,22 @@ export const InvestmentEntryFlow: React.FC<InvestmentEntryFlowProps> = ({
       });
       setStep('success');
     } catch (err: any) {
-      const errorMsg =
-        err?.data?.detail ||
-        err?.data?.message ||
-        err?.message ||
-        'Failed to save investment. Please check the entered data.';
-      setSubmitError(errorMsg);
+      let errorMsg = err?.message;
+      if (err?.data && typeof err.data === 'object') {
+        if (err.data.detail) {
+          errorMsg = Array.isArray(err.data.detail) ? err.data.detail.join(' ') : String(err.data.detail);
+        } else if (err.data.details && typeof err.data.details === 'object') {
+          const detailErrors = Object.entries(err.data.details)
+            .map(([field, msgs]) => `${field.replace(/_/g, ' ')}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+            .join(' | ');
+          errorMsg = `Validation error in details: ${detailErrors}`;
+        } else if (err.data.non_field_errors) {
+          errorMsg = Array.isArray(err.data.non_field_errors)
+            ? err.data.non_field_errors.join(' ')
+            : String(err.data.non_field_errors);
+        }
+      }
+      setSubmitError(errorMsg || 'Failed to save investment. Please check the entered data.');
     } finally {
       setIsSubmitting(false);
     }

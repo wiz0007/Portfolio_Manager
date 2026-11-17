@@ -145,7 +145,8 @@ class DemoMarketDataProvider(BaseMarketDataProvider):
                 low_f = close_f * (1.0 - vol_f)
                 open_f = close_f * (1.0 - daily_pct * 0.5)
 
-                dt = datetime.combine(curr, time(15, 30, tzinfo=timezone.utc))
+                # 15:30 IST market close corresponds to 10:00 UTC (MKT-013)
+                dt = datetime.combine(curr, time(10, 0, tzinfo=timezone.utc))
                 h_digest = hashlib.md5(f"{symbol}_{curr}".encode('utf-8')).hexdigest()
                 vol = (int(h_digest[:6], 16) % 1500000) + 25000
 

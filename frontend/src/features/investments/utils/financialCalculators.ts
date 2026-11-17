@@ -59,12 +59,13 @@ export const calculateFdMaturity = (params: FdCalculationParams): FdCalculationR
   // A = P * (1 + r/n)^(n * t)
   const maturity = principal * Math.pow(1 + r / n, n * tenureYears);
   const totalInterest = maturity - principal;
-  const yieldPct = tenureYears > 0 ? ((maturity - principal) / (principal * tenureYears)) * 100 : annualRatePct;
+  // Effective Annual Rate (EAR): (1 + r/n)^n - 1
+  const earPct = (Math.pow(1 + r / n, n) - 1) * 100;
 
   return {
     maturityAmount: Math.round(maturity * 100) / 100,
     totalInterestEarned: Math.round(totalInterest * 100) / 100,
-    effectiveAnnualYieldPct: Math.round(yieldPct * 100) / 100,
+    effectiveAnnualYieldPct: Math.round(earPct * 100) / 100,
     tenureInYears: Math.round(tenureYears * 100) / 100,
   };
 };
