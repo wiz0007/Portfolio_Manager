@@ -6,3 +6,7 @@ export * from './InvestmentEntryFlow/InvestmentEntryFlow';
 export * from './HoldingsList/HoldingsList';
 export * from './InvestmentDetailModal/InvestmentDetailModal';
 export * from './InvestmentEditModal/InvestmentEditModal';
+export * from './ValuationHistoryModal/ValuationHistoryModal';
+export * from './ManualValuationModal/ManualValuationModal';
+export * from './ProjectionCalculatorModal/ProjectionCalculatorModal';
+export * from './HoldingValuationCard';

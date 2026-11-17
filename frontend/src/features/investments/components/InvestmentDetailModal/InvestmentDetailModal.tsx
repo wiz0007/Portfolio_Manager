@@ -1,10 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   X,
   FileText,
   History,
+  RefreshCw,
+  PlusCircle,
+  TrendingUp,
+  Layers,
 } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useInvestment } from '../../hooks/useInvestments';
+import { investmentValuationApi } from '../../api/investmentValuationApi';
+import { ValuationHistoryModal } from '../ValuationHistoryModal/ValuationHistoryModal';
+import { ManualValuationModal } from '../ManualValuationModal/ManualValuationModal';
+import { ProjectionCalculatorModal } from '../ProjectionCalculatorModal/ProjectionCalculatorModal';
+import { HoldingValuationCard } from '../HoldingValuationCard';
 import { Button } from '@/shared/ui/Button';
 
 export interface InvestmentDetailModalProps {
@@ -20,7 +30,21 @@ export const InvestmentDetailModal: React.FC<InvestmentDetailModalProps> = ({
   onClose,
   onEdit,
 }) => {
+  const queryClient = useQueryClient();
   const { data: investment, isLoading, isError } = useInvestment(portfolioId, investmentId);
+
+  const [showValuationHistory, setShowValuationHistory] = useState(false);
+  const [showManualValuation, setShowManualValuation] = useState(false);
+  const [showProjections, setShowProjections] = useState(false);
+
+  const recalculateMutation = useMutation({
+    mutationFn: () => investmentValuationApi.calculateValuation(investmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['investment', portfolioId, investmentId] });
+      queryClient.invalidateQueries({ queryKey: ['investment-valuations', investmentId] });
+      queryClient.invalidateQueries({ queryKey: ['investments'] });
+    },
+  });
 
   if (isLoading) {
     return (
@@ -44,11 +68,6 @@ export const InvestmentDetailModal: React.FC<InvestmentDetailModalProps> = ({
       </div>
     );
   }
-
-  const initialVal = Number(investment.initial_value || 0);
-  const currentVal = Number(investment.current_value || 0);
-  const netGain = currentVal - initialVal;
-  const netGainPct = initialVal > 0 ? (netGain / initialVal) * 100 : 0;
 
   const detailEntries = investment.details
     ? Object.entries(investment.details).filter(([key, val]) => {
@@ -107,35 +126,70 @@ export const InvestmentDetailModal: React.FC<InvestmentDetailModalProps> = ({
 
         {/* Content body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
-          {/* Metrics summary */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="p-4 rounded-xl bg-theme-card border border-theme-border">
-              <span className="text-xs text-theme-text-muted font-medium">Initial Capital Outlay</span>
-              <div className="text-lg font-bold text-theme-text mt-1">
-                {investment.currency} {initialVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-              </div>
-            </div>
+          {/* Authoritative Holding Valuation & Performance */}
+          <HoldingValuationCard
+            investmentId={investment.id}
+            currency={investment.currency}
+            initialValueFallback={investment.initial_value}
+            currentValueFallback={investment.current_value}
+            valuationMethodFallback={investment.valuation_method}
+          />
 
-            <div className="p-4 rounded-xl bg-theme-card border border-theme-border">
-              <span className="text-xs text-theme-text-muted font-medium">Current Valuation</span>
-              <div className="text-lg font-bold text-theme-text mt-1">
-                {investment.currency} {currentVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl bg-theme-card border border-theme-border">
-              <span className="text-xs text-theme-text-muted font-medium">Unrealized Value Gain</span>
-              <div
-                className={`text-lg font-bold mt-1 ${
-                  netGain >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                }`}
-              >
-                {netGain >= 0 ? '+' : ''}
-                {investment.currency} {netGain.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                <span className="text-xs font-normal ml-1 text-theme-text-muted">
-                  ({netGainPct.toFixed(2)}%)
+          {/* Valuation Engine & Projections Action Toolbar */}
+          <div className="p-4 rounded-xl bg-theme-card/50 border border-theme-border space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-theme-text-muted">Method:</span>
+                <span className="font-semibold text-theme-primary px-2 py-0.5 rounded bg-theme-primary/10 border border-theme-primary/20">
+                  {investment.valuation_method || 'MANUAL'}
                 </span>
               </div>
+              <div className="text-theme-text-muted text-[11px]">
+                Deterministic calculation engine
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => recalculateMutation.mutate()}
+                disabled={recalculateMutation.isPending}
+                className="flex items-center gap-1.5 text-xs"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${recalculateMutation.isPending ? 'animate-spin' : ''}`} />
+                <span>{recalculateMutation.isPending ? 'Calculating...' : 'Recalculate'}</span>
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowManualValuation(true)}
+                className="flex items-center gap-1.5 text-xs"
+              >
+                <PlusCircle className="h-3.5 w-3.5 text-theme-primary" />
+                <span>Record Snapshot</span>
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowValuationHistory(true)}
+                className="flex items-center gap-1.5 text-xs"
+              >
+                <Layers className="h-3.5 w-3.5 text-theme-primary" />
+                <span>Valuation History</span>
+              </Button>
+
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setShowProjections(true)}
+                className="flex items-center gap-1.5 text-xs ml-auto"
+              >
+                <TrendingUp className="h-3.5 w-3.5" />
+                <span>Future Projections</span>
+              </Button>
             </div>
           </div>
 
@@ -178,10 +232,21 @@ export const InvestmentDetailModal: React.FC<InvestmentDetailModalProps> = ({
                     <div>
                       <div className="font-semibold text-theme-text">{tx.transaction_type}</div>
                       <div className="text-theme-text-muted text-[11px]">Date: {tx.transaction_date}</div>
+                      {Number(tx.units) > 0 && Number(tx.price_per_unit) > 0 && (
+                        <div className="text-theme-text-muted text-[11px]">
+                          Qty: {tx.units} @ {tx.currency} {Number(tx.price_per_unit).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </div>
+                      )}
                     </div>
                     <div className="text-right">
                       <div className="font-semibold text-theme-text">
-                        {tx.currency} {Number(tx.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        Net: {tx.currency} {Number(tx.net_cash_flow ?? tx.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </div>
+                      <div className="text-theme-text-muted text-[11px]">
+                        Gross: {tx.currency} {Number(tx.gross_amount ?? tx.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        {(Number(tx.fees) > 0 || Number(tx.taxes) > 0) && (
+                          <span> (Fees: {Number(tx.fees || 0).toFixed(2)}, Tax: {Number(tx.taxes || 0).toFixed(2)})</span>
+                        )}
                       </div>
                       {tx.notes && <div className="text-theme-text-muted text-[11px]">{tx.notes}</div>}
                     </div>
@@ -202,6 +267,39 @@ export const InvestmentDetailModal: React.FC<InvestmentDetailModalProps> = ({
           </Button>
         </div>
       </div>
+
+      {/* Sub-modals for Valuation Audit, Manual Recording, and Future Projections */}
+      {showValuationHistory && (
+        <ValuationHistoryModal
+          investmentId={investmentId}
+          investmentName={investment.display_name}
+          currency={investment.currency}
+          onClose={() => setShowValuationHistory(false)}
+        />
+      )}
+
+      {showManualValuation && (
+        <ManualValuationModal
+          portfolioId={portfolioId}
+          investmentId={investmentId}
+          investmentName={investment.display_name}
+          currentValue={Number(investment.current_value || investment.initial_value || 0)}
+          currency={investment.currency}
+          onClose={() => setShowManualValuation(false)}
+          onSuccess={() => setShowManualValuation(false)}
+        />
+      )}
+
+      {showProjections && (
+        <ProjectionCalculatorModal
+          investmentId={investmentId}
+          investmentName={investment.display_name}
+          currentValue={Number(investment.current_value || investment.initial_value || 0)}
+          category={investment.category}
+          currency={investment.currency}
+          onClose={() => setShowProjections(false)}
+        />
+      )}
     </div>
   );
 };

@@ -21,7 +21,10 @@ export interface InvestmentTransactionItem {
   units: string | number;
   price_per_unit: string | number;
   amount: string | number;
+  gross_amount?: string | number;
   fees: string | number;
+  taxes?: string | number;
+  net_cash_flow?: string | number;
   currency: string;
   notes?: string;
   created_at: string;
@@ -31,12 +34,18 @@ export interface InvestmentValuationItem {
   id: string;
   valuation_date: string;
   amount: string | number;
+  currency?: string;
+  valuation_method?: string;
   source: string;
+  source_reference?: string;
+  observed_at?: string;
   notes?: string;
+  metadata?: Record<string, any>;
   created_at: string;
 }
 
 export interface InvestmentDetailItem extends InvestmentListItem {
+  instrument?: string | null;
   details: Record<string, any> | null;
   transactions: InvestmentTransactionItem[];
   valuations: InvestmentValuationItem[];
@@ -44,6 +53,8 @@ export interface InvestmentDetailItem extends InvestmentListItem {
 
 export interface CreateInvestmentPayload {
   portfolio: string;
+  instrument?: string;
+  instrument_id?: string;
   category: string;
   asset_type: string;
   display_name?: string;

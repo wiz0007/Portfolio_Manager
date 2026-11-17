@@ -24,6 +24,15 @@ class MarketDataService:
         if not point or not point.timestamp:
             return False
         now_utc = datetime.now(timezone.utc)
+        # Future timestamps are never fresh (MKT-004)
+        if point.timestamp > now_utc + timedelta(seconds=60):
+            return False
+
+        # Separate policy for Mutual Funds and Daily EOD NAV vs Intraday quotes (MKT-005, MKT-006)
+        inst = getattr(point, 'instrument', None)
+        if (inst and inst.asset_class == 'MUTUAL_FUND') or point.interval == '1D':
+            return (now_utc.date() == point.timestamp.date()) or ((now_utc - point.timestamp) <= timedelta(hours=24))
+
         return (now_utc - point.timestamp) <= timedelta(minutes=cls.FRESHNESS_MINUTES)
 
     @classmethod
@@ -96,9 +105,12 @@ class MarketDataService:
             ).order_by('timestamp')
         )
 
-        # If data is empty or sparse, fetch from provider
+        # If data is empty or sparse, fetch from provider if historical capability is supported
+        provider = provider_registry.get_provider_for_instrument(instrument)
+        if not getattr(provider.capabilities, 'historical', False):
+            return existing
+
         if len(existing) < 5:
-            provider = provider_registry.get_provider_for_instrument(instrument)
             points = provider.get_history(instrument, start_date, end_date, interval)
 
             with transaction.atomic():
@@ -140,19 +152,37 @@ class MarketDataService:
         mutual_funds = Instrument.objects.filter(asset_class='MUTUAL_FUND', is_active=True)[:6]
 
         def format_inst(inst: Instrument):
-            quote = cls.get_latest_quote(inst)
-            return {
-                'id': str(inst.id),
-                'symbol': inst.symbol,
-                'name': inst.name,
-                'asset_class': inst.asset_class,
-                'exchange': inst.exchange,
-                'price': str(quote.price),
-                'change_amount': str(quote.change_amount) if quote.change_amount is not None else '0.0000',
-                'change_percent': str(quote.change_percent) if quote.change_percent is not None else '0.0000',
-                'is_synthetic': quote.is_synthetic,
-                'timestamp': quote.timestamp.isoformat(),
-            }
+            try:
+                quote = cls.get_latest_quote(inst)
+                return {
+                    'id': str(inst.id),
+                    'symbol': inst.symbol,
+                    'name': inst.name,
+                    'asset_class': inst.asset_class,
+                    'exchange': inst.exchange,
+                    'price': str(quote.price),
+                    'change_amount': str(quote.change_amount) if quote.change_amount is not None else '0.0000',
+                    'change_percent': str(quote.change_percent) if quote.change_percent is not None else '0.0000',
+                    'is_synthetic': quote.is_synthetic,
+                    'timestamp': quote.timestamp.isoformat(),
+                    'status': 'SUCCESS',
+                }
+            except Exception as exc:
+                logger.warning("Failed to fetch quote for overview instrument %s: %s", inst.symbol, exc)
+                return {
+                    'id': str(inst.id),
+                    'symbol': inst.symbol,
+                    'name': inst.name,
+                    'asset_class': inst.asset_class,
+                    'exchange': inst.exchange,
+                    'price': 'N/A',
+                    'change_amount': '0.0000',
+                    'change_percent': '0.0000',
+                    'is_synthetic': False,
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'status': 'UNAVAILABLE',
+                    'error': str(exc),
+                }
 
         return {
             'indices': [format_inst(i) for i in indices],

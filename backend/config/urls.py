@@ -30,6 +30,9 @@ urlpatterns = [
     # Market Data & Instruments API v1
     path('api/v1/', include('apps.market_data.api.v1.urls')),
 
+    # Valuation & Projection Engine API v1
+    path('api/v1/', include('apps.valuation.api.v1.urls')),
+
     # OpenAPI Documentation
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),

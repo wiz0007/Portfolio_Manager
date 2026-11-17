@@ -65,4 +65,90 @@ export const marketDataApi = {
   refreshQuote: (id: string): Promise<MarketQuote> => {
     return apiClient.post<MarketQuote>(`/market-data/refresh/${id}/`);
   },
+
+  // Manual Market-Data Operations & Requests
+  createInstrumentRequest: (data: {
+    raw_name: string;
+    asset_class: string;
+    symbol?: string;
+    exchange?: string;
+    isin?: string;
+    scheme_code?: string;
+    notes?: string;
+  }) => {
+    return apiClient.post('/market-data/requests/', data);
+  },
+
+  getInstrumentRequests: (statusParam?: string) => {
+    const qs = statusParam ? `?status=${encodeURIComponent(statusParam)}` : '';
+    return apiClient.get(`/market-data/requests/${qs}`);
+  },
+
+  matchInstrumentRequest: (id: string, instrumentId: string) => {
+    return apiClient.post(`/market-data/requests/${id}/match/`, { instrument_id: instrumentId });
+  },
+
+  approveInstrumentRequest: (id: string, data: Record<string, unknown>) => {
+    return apiClient.post(`/market-data/requests/${id}/approve/`, data);
+  },
+
+  rejectInstrumentRequest: (id: string, reason: string) => {
+    return apiClient.post(`/market-data/requests/${id}/reject/`, { reason });
+  },
+
+  getDailyWorklist: (dateStr?: string) => {
+    const target = dateStr || new Date().toISOString().split('T')[0];
+    return apiClient.get(`/market-data/worklists/${target}/`);
+  },
+
+  generateDailyWorklist: (dateStr?: string) => {
+    return apiClient.post('/market-data/worklists/generate/', dateStr ? { date: dateStr } : {});
+  },
+
+  createPriceObservation: (data: {
+    instrument: string;
+    price_type: string;
+    value: string;
+    currency?: string;
+    unit?: string;
+    effective_at: string;
+    source?: string;
+    source_reference?: string;
+    notes?: string;
+  }) => {
+    return apiClient.post('/market-data/observations/', data);
+  },
+
+  getObservations: (params?: { instrument?: string; status?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.instrument) query.append('instrument', params.instrument);
+    if (params?.status) query.append('status', params.status);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    return apiClient.get(`/market-data/observations/${qs}`);
+  },
+
+  publishPriceObservation: (id: string) => {
+    return apiClient.post(`/market-data/observations/${id}/publish/`);
+  },
+
+  rejectPriceObservation: (id: string, reason: string) => {
+    return apiClient.post(`/market-data/observations/${id}/reject/`, { reason });
+  },
+
+  correctPriceObservation: (id: string, data: { value: string; correction_reason: string; notes?: string }) => {
+    return apiClient.post(`/market-data/observations/${id}/correct/`, data);
+  },
+
+  previewCsvImport: (csvContent: string, filename?: string) => {
+    return apiClient.post('/market-data/import/preview/', { csv_content: csvContent, filename });
+  },
+
+  commitCsvImport: (previewResult: Record<string, unknown>) => {
+    return apiClient.post('/market-data/import/commit/', { preview_result: previewResult });
+  },
+
+  resolvePrice: (instrumentId: string, asOf?: string) => {
+    const qs = asOf ? `?as_of=${encodeURIComponent(asOf)}` : '';
+    return apiClient.get(`/market-data/resolve/${instrumentId}/${qs}`);
+  },
 };

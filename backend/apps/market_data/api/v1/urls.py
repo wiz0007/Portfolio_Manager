@@ -10,12 +10,25 @@ from apps.market_data.api.v1.views import (
     MarketDataQuoteView,
     MarketDataRefreshView,
 )
+from apps.market_data.api.v1.views.operations import (
+    InstrumentCoverageViewSet,
+    InstrumentRequestViewSet,
+    MarketDataWorklistViewSet,
+    PriceImportCommitView,
+    PriceImportPreviewView,
+    PriceObservationViewSet,
+    PriceResolverView,
+)
 
 router = DefaultRouter()
 router.register(r'instruments', InstrumentViewSet, basename='instrument')
+router.register(r'market-data/requests', InstrumentRequestViewSet, basename='market-data-request')
+router.register(r'market-data/coverage', InstrumentCoverageViewSet, basename='market-data-coverage')
+router.register(r'market-data/worklists', MarketDataWorklistViewSet, basename='market-data-worklist')
+router.register(r'market-data/observations', PriceObservationViewSet, basename='market-data-observation')
 
 urlpatterns = [
-    # Instruments router endpoints (/api/v1/instruments/, /api/v1/instruments/search/)
+    # Router endpoints
     path('', include(router.urls)),
 
     # Market Data specific endpoints
@@ -26,4 +39,9 @@ urlpatterns = [
     path('market-data/providers/', MarketDataProvidersView.as_view(), name='market-data-providers'),
     path('market-data/health/', MarketDataHealthView.as_view(), name='market-data-health'),
     path('market-data/refresh/<uuid:pk>/', MarketDataRefreshView.as_view(), name='market-data-refresh'),
+
+    # Manual Market-Data Operations & Import
+    path('market-data/import/preview/', PriceImportPreviewView.as_view(), name='market-data-import-preview'),
+    path('market-data/import/commit/', PriceImportCommitView.as_view(), name='market-data-import-commit'),
+    path('market-data/resolve/<uuid:instrument_id>/', PriceResolverView.as_view(), name='market-data-resolve'),
 ]

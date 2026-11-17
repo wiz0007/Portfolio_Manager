@@ -101,3 +101,45 @@ class Investment(models.Model):
 
     def __str__(self) -> str:
         return f"{self.display_name} ({self.asset_type}) - {self.currency} {self.current_value}"
+
+    @property
+    def invested_amount(self):
+        """Standard financial cost-basis alias for initial_value."""
+        return self.initial_value
+
+    @invested_amount.setter
+    def invested_amount(self, value):
+        self.initial_value = value
+
+    @property
+    def details(self):
+        """Dynamic lookup of attached asset-specific detail model as a dictionary."""
+        for rel in (
+            'cash_detail',
+            'deposit_detail',
+            'bond_detail',
+            'equity_detail',
+            'mutual_fund_detail',
+            'gold_detail',
+            'real_estate_detail',
+            'crypto_detail',
+        ):
+            try:
+                detail_obj = getattr(self, rel, None)
+                if detail_obj:
+                    return {
+                        field.name: getattr(detail_obj, field.name)
+                        for field in detail_obj._meta.fields
+                        if field.name not in ('id', 'investment')
+                    }
+            except Exception:
+                pass
+        return {}
+
+    @property
+    def quantity(self):
+        """Convenience property for quantity/units from attached detail record."""
+        det = self.details
+        if not det:
+            return None
+        return det.get('quantity') or det.get('units') or det.get('weight_grams')

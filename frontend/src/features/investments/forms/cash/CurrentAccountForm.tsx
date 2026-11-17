@@ -56,6 +56,7 @@ export const CurrentAccountForm: React.FC<CurrentAccountFormProps> = ({
     resolver: zodResolver(currentAccountSchema),
     defaultValues: {
       portfolio_id: portfolioId,
+      account_type: 'CURRENT',
       currency: (initialValues?.currency || defaultCurrency) as any,
       bank_name: initialValues?.bank_name || '',
       account_nickname: initialValues?.account_nickname || '',

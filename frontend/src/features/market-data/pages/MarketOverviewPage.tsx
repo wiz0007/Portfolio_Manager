@@ -4,17 +4,23 @@ import {
   Globe,
   PlusCircle,
   RefreshCw,
+  TrendingUp,
+  ClipboardList,
+  FileQuestion,
 } from 'lucide-react';
 import { marketDataApi } from '../api/marketDataApi';
 import { DemoBadge } from '../components/DemoBadge';
 import { InstrumentSearch } from '../components/InstrumentSearch';
 import { QuoteCard } from '../components/QuoteCard';
 import { PriceChart } from '../components/PriceChart';
+import { OperatorWorklistPanel } from '../components/OperatorWorklistPanel';
+import { InstrumentRequestsQueue } from '../components/InstrumentRequestsQueue';
 import { HistoricalPoint, Instrument, MarketOverviewData, MarketQuote } from '../types';
 import { Button } from '@/shared/ui/Button';
 
 export const MarketOverviewPage: React.FC = () => {
   const navigate = useNavigate();
+  const [viewMode, setViewMode] = useState<'OVERVIEW' | 'WORKLIST' | 'REQUESTS'>('OVERVIEW');
   const [overview, setOverview] = useState<MarketOverviewData | null>(null);
   const [selectedInstrument, setSelectedInstrument] = useState<Instrument | null>(null);
   const [historyPoints, setHistoryPoints] = useState<HistoricalPoint[]>([]);
@@ -116,7 +122,51 @@ export const MarketOverviewPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Benchmark Indices Row */}
+      {/* View Mode Navigation Tabs */}
+      <div className="flex items-center gap-2 border-b border-theme-border pb-3">
+        <button
+          onClick={() => setViewMode('OVERVIEW')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+            viewMode === 'OVERVIEW'
+              ? 'bg-theme-primary text-white shadow-sm'
+              : 'text-theme-text-muted hover:text-theme-text hover:bg-theme-hover'
+          }`}
+        >
+          <TrendingUp className="h-3.5 w-3.5" />
+          Market Overview
+        </button>
+
+        <button
+          onClick={() => setViewMode('WORKLIST')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+            viewMode === 'WORKLIST'
+              ? 'bg-theme-primary text-white shadow-sm'
+              : 'text-theme-text-muted hover:text-theme-text hover:bg-theme-hover'
+          }`}
+        >
+          <ClipboardList className="h-3.5 w-3.5" />
+          Collection Worklist
+        </button>
+
+        <button
+          onClick={() => setViewMode('REQUESTS')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+            viewMode === 'REQUESTS'
+              ? 'bg-theme-primary text-white shadow-sm'
+              : 'text-theme-text-muted hover:text-theme-text hover:bg-theme-hover'
+          }`}
+        >
+          <FileQuestion className="h-3.5 w-3.5" />
+          Instrument Requests
+        </button>
+      </div>
+
+      {viewMode === 'WORKLIST' && <OperatorWorklistPanel />}
+      {viewMode === 'REQUESTS' && <InstrumentRequestsQueue />}
+
+      {viewMode === 'OVERVIEW' && (
+        <>
+          {/* Benchmark Indices Row */}
       {overview?.indices && overview.indices.length > 0 && (
         <section aria-labelledby="indices-heading">
           <div className="flex items-center justify-between mb-3">
@@ -285,7 +335,20 @@ export const MarketOverviewPage: React.FC = () => {
                           : selectedInstrument.asset_class === 'COMMODITY'
                           ? 'gold'
                           : 'equity';
-                      navigate(`/investments/new?category=${category}&symbol=${selectedInstrument.symbol}`);
+                      const type =
+                        selectedInstrument.asset_class === 'MUTUAL_FUND'
+                          ? 'mutual_fund'
+                          : selectedInstrument.asset_class === 'COMMODITY'
+                          ? 'physical_gold'
+                          : 'listed_stock';
+                      const query = new URLSearchParams({
+                        category,
+                        type,
+                        symbol: selectedInstrument.symbol,
+                        name: selectedInstrument.name,
+                        instrument_id: selectedInstrument.id,
+                      });
+                      navigate(`/investments/new?${query.toString()}`);
                     }}
                     className="flex items-center gap-2 shrink-0"
                   >
@@ -339,6 +402,8 @@ export const MarketOverviewPage: React.FC = () => {
           )}
         </div>
       </div>
-    </div>
+    </>
+  )}
+</div>
   );
 };
