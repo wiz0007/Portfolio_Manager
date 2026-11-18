@@ -20,7 +20,12 @@
 | **AUTH-007** | Authentication | `POST` | `/api/v1/auth/verify-email/` | Validate token & mark verified | None | `User` | `apps/users/tests/test_email_verification.py` | Verified |
 | **AUTH-008** | Authentication | `POST` | `/api/v1/auth/resend-verification/` | Resend verification mail | None | `User` | `apps/users/tests/test_email_verification.py` | Verified |
 | **AUTH-009** | Authentication | `POST` | `/api/v1/auth/google/` | Google OAuth token login | None | `User`, Session | `apps/users/tests/test_google_auth.py` | Verified |
-| **DASH-001** | Dashboard | `GET` | `/api/v1/dashboard/overview/` | User aggregated overview stats | Session | `User`, `Portfolio` | `apps/dashboard/tests/test_dashboard_api.py` | Verified |
+| **DASH-001** | Dashboard | `GET` | `/api/v1/dashboard/overview/` | User aggregated overview stats & currency summaries | Session | `User`, `Portfolio`, `Investment` | `apps/dashboard/tests/test_dashboard_api.py` | Verified |
+| **DASH-002** | Dashboard | `GET` | `/api/v1/dashboard/allocation/` | Asset class & portfolio valuation allocations | Session | `Investment` | `apps/dashboard/tests/test_dashboard_api.py` | Verified |
+| **DASH-003** | Dashboard | `GET` | `/api/v1/dashboard/holdings/` | Paginated holding summaries with gain/loss & freshness | Session | `Investment`, `InvestmentValuation` | `apps/dashboard/tests/test_dashboard_api.py` | Verified |
+| **DASH-004** | Dashboard | `GET` | `/api/v1/dashboard/recent-activity/` | Recent chronological investment transactions | Session | `InvestmentTransaction` | `apps/dashboard/tests/test_dashboard_api.py` | Verified |
+| **DASH-005** | Dashboard | `GET` | `/api/v1/dashboard/data-quality/` | Valuation reliability diagnostics & health counts | Session | `Investment`, `PriceObservation` | `apps/dashboard/tests/test_dashboard_api.py` | Verified |
+| **DASH-006** | Dashboard | `GET` | `/api/v1/dashboard/watchlist-preview/` | Preview top user watchlist items & movements | Session | `WatchlistItem` | `apps/dashboard/tests/test_dashboard_api.py` | Verified |
 | **PORT-001** | Portfolios | `POST` | `/api/v1/portfolios/` | Create user portfolio container | Session | `Portfolio` | `apps/portfolios/tests/test_portfolio_api.py` | Verified |
 | **PORT-002** | Portfolios | `GET` | `/api/v1/portfolios/` | List portfolios owned by user | Session | `Portfolio` | `apps/portfolios/tests/test_portfolio_api.py` | Verified |
 | **PORT-003** | Portfolios | `GET` | `/api/v1/portfolios/{id}/` | Retrieve single portfolio | Session | `Portfolio` | `apps/portfolios/tests/test_portfolio_api.py` | Verified |
