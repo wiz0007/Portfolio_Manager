@@ -13,6 +13,11 @@ vi.mock('@/features/authentication/hooks/useAuth', () => ({
 
 vi.mock('@/features/dashboard/hooks/useDashboard', () => ({
   useDashboardOverview: vi.fn(),
+  useDashboardAllocation: vi.fn().mockReturnValue({ data: undefined, isLoading: false, isError: false }),
+  useDashboardHoldings: vi.fn().mockReturnValue({ data: undefined, isLoading: false, isError: false }),
+  useDashboardRecentActivity: vi.fn().mockReturnValue({ data: [], isLoading: false, isError: false }),
+  useDashboardDataQuality: vi.fn().mockReturnValue({ data: undefined, isLoading: false, isError: false }),
+  useDashboardWatchlistPreview: vi.fn().mockReturnValue({ data: [], isLoading: false, isError: false }),
 }));
 
 vi.mock('@/shared/hooks/useHealth', () => ({
@@ -158,7 +163,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('2')).toBeInTheDocument();
     expect(screen.getByText('2 active portfolios')).toBeInTheDocument();
     expect(screen.getByText('Long Term Index Fund')).toBeInTheDocument();
-    expect(screen.getByText('INR')).toBeInTheDocument();
+    expect(screen.getAllByText('INR').length).toBeGreaterThan(0);
     expect(screen.getByText('US Tech Equities')).toBeInTheDocument();
     expect(screen.getByText('USD')).toBeInTheDocument();
     // Ensure no misleading primary currency metric exists

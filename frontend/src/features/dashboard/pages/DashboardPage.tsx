@@ -1,17 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Briefcase,
-  BarChart3,
   User,
   Database,
   ArrowRight,
   Plus,
   Calendar,
-  Sparkles,
   AlertTriangle,
   RotateCw,
   ShieldCheck,
+  PlusCircle,
 } from 'lucide-react';
 import { useCurrentUser } from '@/features/authentication/hooks/useAuth';
 import { useDashboardOverview } from '@/features/dashboard/hooks/useDashboard';
@@ -19,14 +18,24 @@ import { useHealthCheck } from '@/shared/hooks/useHealth';
 import { Card, CardTitle, CardDescription } from '@/shared/ui/Card';
 import { Button } from '@/shared/ui/Button';
 
+import { PortfolioSelector } from '../components/PortfolioSelector';
+import { PortfolioOverview } from '../components/PortfolioOverview';
+import { AssetAllocationChart } from '../components/AssetAllocationChart';
+import { HoldingsOverview } from '../components/HoldingsOverview';
+import { RecentActivity } from '../components/RecentActivity';
+import { ValuationDataQuality } from '../components/ValuationDataQuality';
+import { WatchlistPreview } from '../components/WatchlistPreview';
+
 export const DashboardPage: React.FC = () => {
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | undefined>(undefined);
+
   const { data: currentUser } = useCurrentUser();
   const {
     data: overview,
     isLoading,
     isError,
     refetch,
-  } = useDashboardOverview();
+  } = useDashboardOverview(selectedPortfolioId);
   const { data: healthData, isLoading: isHealthLoading, isError: isHealthError } = useHealthCheck();
 
   const user = overview?.user || currentUser;
@@ -101,7 +110,25 @@ export const DashboardPage: React.FC = () => {
               <Plus className="mr-1.5 h-3.5 w-3.5" /> New Portfolio
             </Button>
           </Link>
+          <Link to="/investments/new">
+            <Button size="sm" variant="outline" className="text-theme-text border-theme-border hover:bg-theme-hover">
+              <PlusCircle className="mr-1.5 h-3.5 w-3.5 text-theme-primary" /> Add Investment
+            </Button>
+          </Link>
         </div>
+      </div>
+
+      {/* Scope Selector */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <PortfolioSelector
+          selectedPortfolioId={selectedPortfolioId}
+          onSelectPortfolio={setSelectedPortfolioId}
+        />
+        {overview?.calculated_at && (
+          <span className="text-[11px] text-theme-text-muted font-medium">
+            Calculated: {new Date(overview.calculated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
       </div>
 
       {/* API Error State Banner */}
@@ -129,9 +156,11 @@ export const DashboardPage: React.FC = () => {
         </Card>
       )}
 
-      {/* Overview Stat Cards */}
+      {/* Section A: Comprehensive Portfolio Overview Metrics */}
+      <PortfolioOverview overview={overview} isLoading={isLoading && !overview} />
+
+      {/* Legacy Baseline Stat Cards (retained for backward compatibility and system health display) */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {/* Stat 1: Portfolios Count */}
         <Card className="border-theme-border bg-theme-card p-5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-theme-text-muted uppercase tracking-wider">
@@ -159,7 +188,6 @@ export const DashboardPage: React.FC = () => {
           </p>
         </Card>
 
-        {/* Stat 2: Database Connectivity */}
         <Card className="border-theme-border bg-theme-card p-5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-theme-text-muted uppercase tracking-wider">
@@ -175,7 +203,6 @@ export const DashboardPage: React.FC = () => {
           </p>
         </Card>
 
-        {/* Stat 3: Security & Session Protection */}
         <Card className="border-theme-border bg-theme-card p-5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-theme-text-muted uppercase tracking-wider">
@@ -192,162 +219,133 @@ export const DashboardPage: React.FC = () => {
         </Card>
       </div>
 
-      {/* Main Content Grid: Portfolios & Analytics Preview */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Portfolio Section */}
-        <Card className="border-theme-border bg-theme-card p-6 flex flex-col justify-between">
+      {/* Sections C & F: Asset Allocation and Data Quality Diagnostics */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <AssetAllocationChart portfolioId={selectedPortfolioId} />
+        <ValuationDataQuality portfolioId={selectedPortfolioId} />
+      </div>
+
+      {/* Section D: Holdings Overview */}
+      <HoldingsOverview portfolioId={selectedPortfolioId} />
+
+      {/* Sections E & G: Recent Activity and Watchlist Preview */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <RecentActivity portfolioId={selectedPortfolioId} />
+        <WatchlistPreview />
+      </div>
+
+      {/* Portfolios Container List */}
+      <Card className="border-theme-border bg-theme-card p-6">
+        <div className="flex items-center justify-between mb-4">
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <CardTitle className="text-lg font-semibold text-theme-text">Your Portfolios</CardTitle>
-                <CardDescription className="text-xs text-theme-text-muted">
-                  Real user portfolio containers
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                {overview && (
-                  <span className="rounded bg-theme-surface px-2 py-1 text-[11px] font-medium text-theme-text-secondary border border-theme-border">
-                    Total: {overview.portfolio_count}
-                  </span>
-                )}
-                <Link to="/portfolios">
-                  <Button variant="ghost" size="sm" className="text-xs text-theme-primary hover:bg-theme-hover p-1">
-                    View All &rarr;
-                  </Button>
-                </Link>
-              </div>
-            </div>
-
-            {/* Loading State Skeleton */}
-            {isLoading && !overview && (
-              <div className="space-y-3 my-4">
-                {[1, 2].map((i) => (
-                  <div
-                    key={i}
-                    className="p-3.5 rounded-lg bg-theme-surface/60 border border-theme-border animate-pulse h-16"
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Error State when no cached overview exists */}
-            {isError && !overview && (
-              <div className="rounded-xl border border-rose-900/30 bg-rose-950/20 p-6 text-center my-4">
-                <AlertTriangle className="h-6 w-6 text-rose-400 mx-auto mb-2" />
-                <h3 className="text-sm font-semibold text-rose-200 mb-1">
-                  Failed to load portfolios
-                </h3>
-                <p className="text-xs text-rose-400/90 mb-3">
-                  Could not retrieve your portfolio data. Please check your connection and try again.
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => refetch()}
-                  className="border-rose-800 text-rose-200 hover:bg-rose-900/30"
-                >
-                  <RotateCw className="mr-1.5 h-3.5 w-3.5" /> Retry
-                </Button>
-              </div>
-            )}
-
-            {/* Empty State: Only when successfully loaded with 0 portfolios */}
-            {overview && overview.portfolio_count === 0 && (
-              <div className="rounded-xl border border-dashed border-theme-border bg-theme-surface/50 p-8 text-center my-4">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-theme-surface text-theme-text-muted mb-3 border border-theme-border">
-                  <Briefcase className="h-6 w-6" />
-                </div>
-                <h3 className="text-sm font-semibold text-theme-text mb-1">
-                  You haven't created a portfolio yet
-                </h3>
-                <p className="mx-auto max-w-sm text-xs text-theme-text-muted mb-4">
-                  Create your first portfolio to start organizing your investment containers and currency allocations.
-                </p>
-                <Link to="/portfolios/new">
-                  <Button size="sm" className="bg-theme-primary text-theme-text-inverse hover:bg-theme-primary-hover shadow-sm">
-                    <Plus className="mr-1.5 h-3.5 w-3.5" /> Create Portfolio
-                  </Button>
-                </Link>
-              </div>
-            )}
-
-            {/* Recent Portfolios List: Only when overview has portfolios */}
-            {overview && overview.portfolio_count > 0 && (
-              <div className="space-y-3 my-4">
-                {overview.recent_portfolios.map((portfolio) => (
-                  <Link
-                    key={portfolio.id}
-                    to={`/portfolios/${portfolio.id}`}
-                    className="flex items-center justify-between p-3.5 rounded-lg bg-theme-surface border border-theme-border hover:border-theme-primary/50 transition-colors group"
-                  >
-                    <div className="min-w-0 pr-3">
-                      <div className="text-sm font-medium text-theme-text group-hover:text-theme-primary transition-colors truncate">
-                        {portfolio.name}
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs text-theme-text-muted mt-0.5">
-                        <Calendar className="h-3 w-3" />
-                        <span>Created {formatDate(portfolio.created_at)}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="px-2 py-0.5 rounded text-xs font-mono font-medium bg-theme-primary-subtle text-theme-primary border border-theme-primary/30">
-                        {portfolio.base_currency}
-                      </span>
-                      <ArrowRight className="h-3.5 w-3.5 text-theme-text-muted group-hover:text-theme-primary transition-colors" />
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
+            <CardTitle className="text-lg font-semibold text-theme-text">Your Portfolios</CardTitle>
+            <CardDescription className="text-xs text-theme-text-muted">
+              Real user portfolio containers
+            </CardDescription>
           </div>
-
-          <div className="pt-2 text-[11px] text-theme-text-muted border-t border-theme-border flex items-center justify-between">
-            <span>Actual PostgreSQL portfolio records</span>
-            <Link to="/portfolios/new" className="text-theme-primary hover:underline font-medium">
-              + New Portfolio
+          <div className="flex items-center gap-2">
+            {overview && (
+              <span className="rounded bg-theme-surface px-2 py-1 text-[11px] font-medium text-theme-text-secondary border border-theme-border">
+                Total: {overview.portfolio_count}
+              </span>
+            )}
+            <Link to="/portfolios">
+              <Button variant="ghost" size="sm" className="text-xs text-theme-primary hover:bg-theme-hover p-1">
+                View All &rarr;
+              </Button>
             </Link>
           </div>
-        </Card>
+        </div>
 
-        {/* Analytics Section (Sprint 5 Roadmap) */}
-        <Card className="border-theme-border bg-theme-card p-6 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <CardTitle className="text-lg font-semibold text-theme-text">Performance Analytics</CardTitle>
-                <CardDescription className="text-xs text-theme-text-muted">
-                  CAGR, XIRR, risk engine and AI insights
-                </CardDescription>
-              </div>
-              <span className="rounded bg-theme-accent-subtle border border-theme-accent/30 px-2 py-0.5 text-[11px] font-medium text-theme-accent flex items-center gap-1">
-                <Sparkles className="h-3 w-3" /> Upcoming
-              </span>
+        {/* Loading State Skeleton */}
+        {isLoading && !overview && (
+          <div className="space-y-3 my-4">
+            {[1, 2].map((i) => (
+              <div
+                key={i}
+                className="p-3.5 rounded-lg bg-theme-surface/60 border border-theme-border animate-pulse h-16"
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Error State when no cached overview exists */}
+        {isError && !overview && (
+          <div className="rounded-xl border border-rose-900/30 bg-rose-950/20 p-6 text-center my-4">
+            <AlertTriangle className="h-6 w-6 text-rose-400 mx-auto mb-2" />
+            <h3 className="text-sm font-semibold text-rose-200 mb-1">
+              Failed to load portfolios
+            </h3>
+            <p className="text-xs text-rose-400/90 mb-3">
+              Could not retrieve your portfolio data. Please check your connection and try again.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => refetch()}
+              className="border-rose-800 text-rose-200 hover:bg-rose-900/30"
+            >
+              <RotateCw className="mr-1.5 h-3.5 w-3.5" /> Retry
+            </Button>
+          </div>
+        )}
+
+        {/* Empty State: Only when successfully loaded with 0 portfolios */}
+        {overview && overview.portfolio_count === 0 && (
+          <div className="rounded-xl border border-dashed border-theme-border bg-theme-surface/50 p-8 text-center my-4">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-theme-surface text-theme-text-muted mb-3 border border-theme-border">
+              <Briefcase className="h-6 w-6" />
             </div>
+            <h3 className="text-sm font-semibold text-theme-text mb-1">
+              You haven't created a portfolio yet
+            </h3>
+            <p className="mx-auto max-w-sm text-xs text-theme-text-muted mb-4">
+              Create your first portfolio to start organizing your investment containers and currency allocations.
+            </p>
+            <Link to="/portfolios/new">
+              <Button size="sm" className="bg-theme-primary text-theme-text-inverse hover:bg-theme-primary-hover shadow-sm">
+                <Plus className="mr-1.5 h-3.5 w-3.5" /> Create Portfolio
+              </Button>
+            </Link>
+          </div>
+        )}
 
-            <div className="rounded-xl border border-dashed border-theme-border bg-theme-surface/50 p-8 text-center my-4">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-theme-accent-subtle text-theme-accent border border-theme-accent/30 mb-3">
-                <BarChart3 className="h-6 w-6" />
-              </div>
-              <h3 className="text-sm font-semibold text-theme-text mb-1">
-                Financial Analytics & Intelligence
-              </h3>
-              <p className="mx-auto max-w-sm text-xs text-theme-text-muted mb-4">
-                Detailed CAGR calculations, benchmark comparisons, holdings performance, and AI-assisted financial recommendations are scheduled for the next release.
-              </p>
-              <Link to="/analytics">
-                <Button size="sm" variant="outline" className="text-theme-text border-theme-border hover:bg-theme-hover">
-                  Explore Analytics Roadmap <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                </Button>
+        {/* Recent Portfolios List: Only when overview has portfolios */}
+        {overview && overview.portfolio_count > 0 && (
+          <div className="space-y-3 my-4">
+            {overview.recent_portfolios.map((portfolio) => (
+              <Link
+                key={portfolio.id}
+                to={`/portfolios/${portfolio.id}`}
+                className="flex items-center justify-between p-3.5 rounded-lg bg-theme-surface border border-theme-border hover:border-theme-primary/50 transition-colors group"
+              >
+                <div className="min-w-0 pr-3">
+                  <div className="text-sm font-medium text-theme-text group-hover:text-theme-primary transition-colors truncate">
+                    {portfolio.name}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-theme-text-muted mt-0.5">
+                    <Calendar className="h-3 w-3" />
+                    <span>Created {formatDate(portfolio.created_at)}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="px-2 py-0.5 rounded text-xs font-mono font-medium bg-theme-primary-subtle text-theme-primary border border-theme-primary/30">
+                    {portfolio.base_currency}
+                  </span>
+                  <ArrowRight className="h-3.5 w-3.5 text-theme-text-muted group-hover:text-theme-primary transition-colors" />
+                </div>
               </Link>
-            </div>
+            ))}
           </div>
+        )}
 
-          <div className="pt-2 text-[11px] text-theme-text-muted border-t border-theme-border flex items-center justify-between">
-            <span>MVP Foundation Ready</span>
-            <span className="text-theme-accent font-medium">Sprint 5 Scope</span>
-          </div>
-        </Card>
-      </div>
+        <div className="pt-2 text-[11px] text-theme-text-muted border-t border-theme-border flex items-center justify-between">
+          <span>Actual PostgreSQL portfolio records</span>
+          <Link to="/portfolios/new" className="text-theme-primary hover:underline font-medium">
+            + New Portfolio
+          </Link>
+        </div>
+      </Card>
     </div>
   );
 };
