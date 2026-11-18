@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
+from django.core.exceptions import ValidationError
 from django.db.models import Q
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
@@ -13,7 +14,11 @@ from apps.market_data.api.v1.serializers import (
 )
 from apps.market_data.models.instrument import Instrument
 from apps.market_data.providers.registry import provider_registry
+from apps.market_data.services.history_service import MarketHistoryService
 from apps.market_data.services.market_data_service import MarketDataService
+from apps.market_data.services.movement_service import PriceMovementService
+from apps.market_data.services.price_resolver import PriceResolver
+from apps.market_data.services.search_service import InstrumentSearchService
 
 
 class InstrumentViewSet(viewsets.ReadOnlyModelViewSet):
@@ -34,6 +39,9 @@ class InstrumentViewSet(viewsets.ReadOnlyModelViewSet):
         exchange = self.request.query_params.get('exchange')
         if exchange:
             qs = qs.filter(exchange__iexact=exchange)
+        product_type = self.request.query_params.get('product_type')
+        if product_type:
+            qs = qs.filter(product_type__iexact=product_type)
         active_only = self.request.query_params.get('is_active')
         if active_only is not None:
             qs = qs.filter(is_active=active_only.lower() in ['true', '1'])
@@ -43,24 +51,141 @@ class InstrumentViewSet(viewsets.ReadOnlyModelViewSet):
                 Q(symbol__icontains=search)
                 | Q(name__icontains=search)
                 | Q(isin__icontains=search)
+                | Q(scheme_code__icontains=search)
+                | Q(exchange__icontains=search)
+                | Q(product_type__icontains=search)
+                | Q(reference_data__sector__icontains=search)
+                | Q(reference_data__industry__icontains=search)
             )
         return qs
 
     @action(detail=False, methods=['get'])
     def search(self, request):
         """Fuzzy search endpoint for instrument selectors and autocompletes."""
-        query = request.query_params.get('q', '').strip()
-        if not query:
+        query = request.query_params.get('q', request.query_params.get('search', '')).strip()
+        asset_class = request.query_params.get('asset_class')
+        exchange = request.query_params.get('exchange')
+        product_type = request.query_params.get('product_type')
+        limit = min(int(request.query_params.get('limit', 20)), 100)
+
+        if not query and not asset_class and not exchange and not product_type:
             return Response([])
 
-        instruments = Instrument.objects.filter(
-            Q(symbol__icontains=query)
-            | Q(name__icontains=query)
-            | Q(isin__icontains=query)
-        ).filter(is_active=True)[:20]
+        instruments = InstrumentSearchService.search(
+            query=query,
+            asset_class=asset_class,
+            exchange=exchange,
+            product_type=product_type,
+            limit=limit,
+        )
 
         serializer = self.get_serializer(instruments, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], url_path='market-data/latest')
+    def market_data_latest(self, request, pk=None):
+        """Retrieve authoritative resolved latest price and movement."""
+        instrument = self.get_object()
+        resolved = PriceResolver.resolve_price(instrument)
+        movement = PriceMovementService.calculate_movement(
+            instrument=instrument,
+            current_price=resolved.price,
+            current_dt=resolved.effective_at,
+            currency=resolved.currency,
+            unit=resolved.unit,
+        )
+        return Response({
+            'instrument_id': str(instrument.id),
+            'symbol': instrument.symbol,
+            'price': str(resolved.price) if resolved.price is not None else None,
+            'currency': resolved.currency,
+            'unit': resolved.unit,
+            'effective_at': resolved.effective_at.isoformat() if resolved.effective_at else None,
+            'status': resolved.status,
+            'source': resolved.source,
+            'source_reference': resolved.source_reference,
+            'is_synthetic': resolved.is_synthetic,
+            'notes': resolved.notes,
+            'movement': {
+                'change_amount': str(movement.change_amount) if movement.change_amount is not None else None,
+                'change_percent': str(movement.change_percent) if movement.change_percent is not None else None,
+                'previous_price': str(movement.previous_price) if movement.previous_price is not None else None,
+                'previous_effective_at': movement.previous_effective_at.isoformat() if movement.previous_effective_at else None,
+                'status': movement.status,
+                'notes': movement.notes,
+            },
+        })
+
+    @action(detail=True, methods=['get'], url_path='market-data/history')
+    def market_data_history(self, request, pk=None):
+        """Retrieve bounded, chronologically sorted historical market observations."""
+        instrument = self.get_object()
+        period = request.query_params.get('period', '1M')
+        from_str = request.query_params.get('from')
+        to_str = request.query_params.get('to')
+        start_date = datetime.strptime(from_str, '%Y-%m-%d').date() if from_str else None
+        end_date = datetime.strptime(to_str, '%Y-%m-%d').date() if to_str else None
+        interval = request.query_params.get('interval', '1D').upper()
+        price_type = request.query_params.get('price_type')
+
+        try:
+            history_res = MarketHistoryService.get_history(
+                instrument=instrument,
+                period=period,
+                start_date=start_date,
+                end_date=end_date,
+                interval=interval,
+                price_type=price_type,
+            )
+            return Response({
+                'instrument_id': str(instrument.id),
+                'symbol': instrument.symbol,
+                'supported': history_res.supported,
+                'period': history_res.period,
+                'start_date': history_res.start_date,
+                'end_date': history_res.end_date,
+                'currency': history_res.currency,
+                'unit': history_res.unit,
+                'message': history_res.message,
+                'points': [
+                    {
+                        'timestamp': p.timestamp.isoformat(),
+                        'date': p.date,
+                        'price': str(p.price),
+                        'currency': p.currency,
+                        'unit': p.unit,
+                        'source': p.source,
+                        'is_synthetic': p.is_synthetic,
+                        'open_price': str(p.open_price) if p.open_price is not None else None,
+                        'high_price': str(p.high_price) if p.high_price is not None else None,
+                        'low_price': str(p.low_price) if p.low_price is not None else None,
+                        'volume': p.volume,
+                    }
+                    for p in history_res.points
+                ],
+            })
+        except ValidationError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['get'], url_path='market-data/status')
+    def market_data_status(self, request, pk=None):
+        """Retrieve market-data coverage status and observation freshness."""
+        instrument = self.get_object()
+        resolved = PriceResolver.resolve_price(instrument)
+        cov = getattr(instrument, 'coverage', None)
+        return Response({
+            'instrument_id': str(instrument.id),
+            'symbol': instrument.symbol,
+            'coverage_configured': cov is not None,
+            'price_type': cov.price_type if cov else 'LTP',
+            'quotation_unit': cov.unit if cov else 'UNITS',
+            'freshness_hours': cov.freshness_hours if cov else None,
+            'resolution_status': resolved.status,
+            'last_effective_at': resolved.effective_at.isoformat() if resolved.effective_at else None,
+            'source': resolved.source,
+            'is_synthetic': resolved.is_synthetic,
+            'notes': resolved.notes,
+        })
 
 
 class MarketDataQuoteView(APIView):

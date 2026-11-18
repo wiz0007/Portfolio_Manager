@@ -13,7 +13,8 @@ import { MarketOverviewPage } from '@/features/market-data/pages/MarketOverviewP
 import { ProfilePage } from '@/features/settings/pages/ProfilePage';
 import { AccountPage } from '@/features/settings/pages/AccountPage';
 import { AnalyticsPlaceholderPage } from '@/features/analytics/pages/AnalyticsPlaceholderPage';
-import { WatchlistPlaceholderPage } from '@/features/watchlists/pages/WatchlistPlaceholderPage';
+import { WatchlistPage } from '@/features/watchlists/pages/WatchlistPage';
+import { InstrumentDetailPage } from '@/features/watchlists/pages/InstrumentDetailPage';
 import { ProtectedRoute } from './layouts/ProtectedRoute';
 import { PublicOnlyRoute } from './layouts/PublicOnlyRoute';
 import { AuthenticatedLayout } from './layouts/AuthenticatedLayout';
@@ -41,7 +42,9 @@ export const AppRouter: React.FC = () => {
           <Route path="/markets" element={<MarketOverviewPage />} />
           <Route path="/investments/new" element={<InvestmentCreatePage />} />
           <Route path="/analytics" element={<AnalyticsPlaceholderPage />} />
-          <Route path="/watchlist" element={<WatchlistPlaceholderPage />} />
+          <Route path="/watchlist" element={<WatchlistPage />} />
+          <Route path="/instruments/:id" element={<InstrumentDetailPage />} />
+          <Route path="/watchlist/instruments/:id" element={<InstrumentDetailPage />} />
           <Route path="/settings/profile" element={<ProfilePage />} />
           <Route path="/settings/account" element={<AccountPage />} />
         </Route>
