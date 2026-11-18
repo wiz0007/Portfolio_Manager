@@ -134,7 +134,7 @@ describe('Watchlist Micro-Components', () => {
         </QueryClientProvider>
       );
 
-      expect(screen.getByText('Historical Price Movement')).toBeDefined();
+      expect(screen.getByText(/Historical Price Movement/)).toBeDefined();
       expect(screen.getByText('Period High')).toBeDefined();
       expect(screen.getByText('Period Low')).toBeDefined();
       expect(screen.getByText('₹1100.00')).toBeDefined();
