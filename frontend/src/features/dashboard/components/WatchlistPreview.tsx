@@ -101,6 +101,8 @@ export const WatchlistPreview: React.FC<WatchlistPreviewProps> = ({
                       status={md?.status as any}
                       isSynthetic={md?.is_synthetic}
                       effectiveAt={md?.effective_at}
+                      publishedAt={md?.published_at}
+                      ageSeconds={md?.age_seconds}
                     />
                   </div>
 

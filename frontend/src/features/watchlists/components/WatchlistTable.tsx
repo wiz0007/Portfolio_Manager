@@ -11,6 +11,18 @@ interface WatchlistTableProps {
   isRemoving?: string | null;
 }
 
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  INR: '₹',
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+};
+
+const getCurrencySymbol = (currency?: string): string => {
+  if (!currency) return '₹';
+  return CURRENCY_SYMBOLS[currency.toUpperCase()] || `${currency} `;
+};
+
 export const WatchlistTable: React.FC<WatchlistTableProps> = ({
   items,
   onRemove,
@@ -26,7 +38,7 @@ export const WatchlistTable: React.FC<WatchlistTableProps> = ({
             <th className="py-3.5 px-4">Instrument</th>
             <th className="py-3.5 px-4">Market</th>
             <th className="py-3.5 px-4 text-right">Latest Price</th>
-            <th className="py-3.5 px-4 text-right">24h Movement</th>
+            <th className="py-3.5 px-4 text-right">Session Movement</th>
             <th className="py-3.5 px-4 text-center">Status</th>
             <th className="py-3.5 px-4">Target Alert</th>
             <th className="py-3.5 px-4 text-right">Actions</th>
@@ -39,6 +51,7 @@ export const WatchlistTable: React.FC<WatchlistTableProps> = ({
             const priceNum = md.price ? parseFloat(md.price) : null;
             const targetNum = item.target_price ? parseFloat(item.target_price) : null;
             const isRemovingThis = isRemoving === item.id;
+            const currSymbol = getCurrencySymbol(inst.currency);
 
             return (
               <tr
@@ -82,7 +95,7 @@ export const WatchlistTable: React.FC<WatchlistTableProps> = ({
                   <div className="flex flex-col items-end">
                     <span className="font-bold text-sm text-theme-text">
                       {priceNum !== null
-                        ? `₹${priceNum.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`
+                        ? `${currSymbol}${priceNum.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`
                         : '--'}
                     </span>
                     <span className="text-[10px] text-theme-text-muted">
@@ -91,7 +104,7 @@ export const WatchlistTable: React.FC<WatchlistTableProps> = ({
                   </div>
                 </td>
 
-                {/* 24h Movement */}
+                {/* Session Movement */}
                 <td className="py-3.5 px-4 text-right">
                   <PriceMovement movement={md.movement} currency={inst.currency} />
                 </td>
@@ -102,15 +115,20 @@ export const WatchlistTable: React.FC<WatchlistTableProps> = ({
                     status={md.status}
                     isSynthetic={md.is_synthetic}
                     effectiveAt={md.effective_at}
+                    publishedAt={md.published_at}
+                    ageSeconds={md.age_seconds}
                   />
                 </td>
 
                 {/* Target Alert */}
                 <td className="py-3.5 px-4">
                   {targetNum !== null ? (
-                    <div className="flex items-center gap-1.5 text-xs font-semibold text-theme-primary">
+                    <div
+                      className="flex items-center gap-1.5 text-xs font-semibold text-theme-primary"
+                      title="Configured Price Target"
+                    >
                       <BellRing className="h-3.5 w-3.5 shrink-0" />
-                      <span>₹{targetNum.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                      <span>{currSymbol}{targetNum.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                     </div>
                   ) : (
                     <span className="text-xs text-theme-text-muted">None</span>

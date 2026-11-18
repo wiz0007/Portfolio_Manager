@@ -39,9 +39,12 @@ export interface PriceMovement {
 
 export interface WatchlistMarketData {
   price: string | null;
+  price_type?: string;
   currency: string;
   unit: string;
   effective_at: string | null;
+  published_at?: string | null;
+  age_seconds?: number | null;
   status: PriceFreshnessStatus;
   source: string;
   source_reference: string;

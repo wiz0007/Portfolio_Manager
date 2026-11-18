@@ -57,11 +57,14 @@ class PriceMovementService:
         ref_dt = current_dt or dj_timezone.now()
         expected_currency = currency or instrument.currency
 
-        # 1. Look for previous published PriceObservation strictly before ref_dt
-        obs_qs = PriceObservation.objects.filter(
-            instrument=instrument,
-            status=ObservationStatus.PUBLISHED,
-            effective_at__lt=ref_dt,
+        # 1. Look for previous published PriceObservation strictly before ref_dt (excluding superseded)
+        obs_qs = (
+            PriceObservation.objects.filter(
+                instrument=instrument,
+                status=ObservationStatus.PUBLISHED,
+                effective_at__lt=ref_dt,
+            )
+            .exclude(corrections__status=ObservationStatus.PUBLISHED)
         )
         if price_type:
             obs_qs = obs_qs.filter(price_type=price_type)

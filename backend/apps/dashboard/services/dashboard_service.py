@@ -98,7 +98,7 @@ class DashboardService:
             group['total_invested_capital'] += i_val
 
             # Valued check: has a positive current value or valid valuation record
-            has_snapshot = inv.valuations.exists()
+            has_snapshot = bool(inv.valuations.all())
             if c_val > Decimal('0') or has_snapshot:
                 group['valued_investment_count'] += 1
             else:
@@ -133,13 +133,17 @@ class DashboardService:
 
         stale_count = 0
         missing_count = 0
+        instruments = [inv.instrument for inv in investments if inv.instrument]
+        price_map = PriceResolver.resolve_prices_bulk(instruments)
+
         for inv in investments:
             if inv.instrument:
-                res = PriceResolver.resolve_price(inv.instrument)
-                if res.status == 'STALE':
-                    stale_count += 1
-                elif res.status in ('MISSING', 'UNSUPPORTED'):
-                    missing_count += 1
+                res = price_map.get(inv.instrument.id)
+                if res:
+                    if res.status == 'STALE':
+                        stale_count += 1
+                    elif res.status in ('MISSING', 'UNSUPPORTED'):
+                        missing_count += 1
 
         completeness_pct = 100.0
         if active_investment_count > 0:
@@ -343,6 +347,7 @@ class DashboardService:
         user: User,
         portfolio_id: Optional[uuid.UUID | str] = None,
         category: Optional[str] = None,
+        is_active: Optional[bool] = True,
         sort_by: str = 'current_value',
         order: str = 'desc',
         limit: int = 20,
@@ -360,14 +365,35 @@ class DashboardService:
         if selected_portfolio:
             inv_qs = inv_qs.filter(portfolio=selected_portfolio)
 
+        if is_active is not None:
+            inv_qs = inv_qs.filter(is_active=is_active)
+
         if category:
             inv_qs = inv_qs.filter(category=category.lower())
 
-        investments = list(inv_qs)
+        total_count = inv_qs.count()
+
+        # Database-side pagination for direct DB columns
+        can_db_sort = sort_by in ('current_value', 'invested_capital', 'display_name')
+        if can_db_sort:
+            col_map = {
+                'current_value': 'current_value',
+                'invested_capital': 'initial_value',
+                'display_name': 'display_name',
+            }
+            db_col = col_map[sort_by]
+            prefix = '-' if order.lower() == 'desc' else ''
+            paged_investments = list(inv_qs.order_by(f"{prefix}{db_col}")[offset: offset + limit])
+        else:
+            paged_investments = list(inv_qs)
+
+        # Bulk resolve market prices for instruments
+        instruments = [inv.instrument for inv in paged_investments if inv.instrument]
+        price_map = PriceResolver.resolve_prices_bulk(instruments)
 
         # Annotate holdings
         annotated: List[Dict[str, Any]] = []
-        for inv in investments:
+        for inv in paged_investments:
             c_val = to_decimal(inv.current_value)
             i_val = to_decimal(inv.initial_value)
             abs_gl = c_val - i_val
@@ -378,17 +404,22 @@ class DashboardService:
                 gl_pct = str(quantize_currency(pct))
 
             # Latest valuation snapshot
-            latest_val = inv.valuations.order_by('-valuation_date', '-created_at').first()
-            val_date = latest_val.valuation_date.isoformat() if latest_val else inv.updated_at.date().isoformat()
-            val_source = latest_val.source if latest_val else 'RECORDED'
+            snapshots = list(inv.valuations.all())
+            latest_val = sorted(snapshots, key=lambda v: (v.valuation_date, v.created_at), reverse=True)[0] if snapshots else None
+            val_date = latest_val.valuation_date.isoformat() if latest_val else None
+            val_source = latest_val.source if latest_val else None
+            val_status = 'VALUED' if latest_val else 'MISSING'
 
             # Price freshness & provenance
             freshness = 'MANUAL'
             is_stale = False
             if inv.instrument:
-                res = PriceResolver.resolve_price(inv.instrument)
-                freshness = res.status
-                is_stale = res.status == 'STALE'
+                res = price_map.get(inv.instrument.id)
+                if res:
+                    freshness = res.status
+                    is_stale = res.status == 'STALE'
+                else:
+                    freshness = 'MISSING'
 
             # Clean quantity string where available
             qty = inv.quantity
@@ -410,32 +441,21 @@ class DashboardService:
                 'gain_loss_percentage': gl_pct,
                 'valuation_date': val_date,
                 'valuation_source': val_source,
+                'valuation_status': val_status,
                 'price_freshness': freshness,
                 'is_stale': is_stale,
-                '_raw_current_val': c_val,
-                '_raw_invested_val': i_val,
                 '_raw_gain_loss': abs_gl,
             })
 
-        # Sorting
-        reverse = (order.lower() == 'desc')
-        if sort_by == 'invested_capital':
-            annotated.sort(key=lambda x: x['_raw_invested_val'], reverse=reverse)
-        elif sort_by == 'gain_loss':
+        if not can_db_sort:
+            reverse = (order.lower() == 'desc')
             annotated.sort(key=lambda x: x['_raw_gain_loss'], reverse=reverse)
-        elif sort_by == 'display_name':
-            annotated.sort(key=lambda x: x['display_name'].lower(), reverse=reverse)
-        else:  # default 'current_value'
-            annotated.sort(key=lambda x: x['_raw_current_val'], reverse=reverse)
+            paged_results = annotated[offset: offset + limit]
+        else:
+            paged_results = annotated
 
-        # Cleanup internal keys
-        for h in annotated:
-            h.pop('_raw_current_val', None)
-            h.pop('_raw_invested_val', None)
+        for h in paged_results:
             h.pop('_raw_gain_loss', None)
-
-        total_count = len(annotated)
-        paged_results = annotated[offset: offset + limit]
 
         return {
             'count': total_count,
@@ -517,6 +537,10 @@ class DashboardService:
         unverified_list = []
         unsupported_list = []
 
+        # Bulk resolve market prices for all instrument holdings
+        instruments = [inv.instrument for inv in investments if inv.instrument]
+        price_map = PriceResolver.resolve_prices_bulk(instruments)
+
         for inv in investments:
             holding_info = {
                 'id': str(inv.id),
@@ -537,18 +561,18 @@ class DashboardService:
                     })
                     continue
 
-                res = PriceResolver.resolve_price(inst)
-                if res.status == 'AVAILABLE':
+                res = price_map.get(inst.id)
+                if not res or res.status == 'MISSING':
+                    missing_list.append({
+                        **holding_info,
+                        'reason': f"No published market price found for {inst.symbol}.",
+                    })
+                elif res.status == 'AVAILABLE':
                     valued_list.append(holding_info)
                 elif res.status == 'STALE':
                     stale_list.append({
                         **holding_info,
                         'reason': f"Market price for {inst.symbol} is stale (effective {res.effective_at.date() if res.effective_at else 'unknown'}).",
-                    })
-                elif res.status == 'MISSING':
-                    missing_list.append({
-                        **holding_info,
-                        'reason': f"No published market price found for {inst.symbol}.",
                     })
                 elif res.status == 'SYNTHETIC':
                     valued_list.append(holding_info)
@@ -564,7 +588,8 @@ class DashboardService:
                     })
             else:
                 # Non-instrument holdings (Bank deposit, cash, real estate, etc.)
-                if to_decimal(inv.current_value) > Decimal('0') or inv.valuations.exists():
+                has_snapshot = bool(inv.valuations.all())
+                if to_decimal(inv.current_value) > Decimal('0') or has_snapshot:
                     valued_list.append(holding_info)
                 elif to_decimal(inv.initial_value) > Decimal('0'):
                     missing_list.append({

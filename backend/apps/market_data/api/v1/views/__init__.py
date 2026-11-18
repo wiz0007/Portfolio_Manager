@@ -123,9 +123,17 @@ class InstrumentViewSet(viewsets.ReadOnlyModelViewSet):
         period = request.query_params.get('period', '1M')
         from_str = request.query_params.get('from')
         to_str = request.query_params.get('to')
-        start_date = datetime.strptime(from_str, '%Y-%m-%d').date() if from_str else None
-        end_date = datetime.strptime(to_str, '%Y-%m-%d').date() if to_str else None
+
+        try:
+            start_date = datetime.strptime(from_str, '%Y-%m-%d').date() if from_str else None
+            end_date = datetime.strptime(to_str, '%Y-%m-%d').date() if to_str else None
+        except ValueError:
+            return Response({'detail': 'Invalid date format. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+
         interval = request.query_params.get('interval', '1D').upper()
+        if interval not in ('1D', '1W', '1M', '1Y'):
+            return Response({'detail': f"Unsupported interval '{interval}'. Use '1D', '1W', '1M', or '1Y'."}, status=status.HTTP_400_BAD_REQUEST)
+
         price_type = request.query_params.get('price_type')
 
         try:
@@ -152,6 +160,7 @@ class InstrumentViewSet(viewsets.ReadOnlyModelViewSet):
                         'timestamp': p.timestamp.isoformat(),
                         'date': p.date,
                         'price': str(p.price),
+                        'price_type': p.price_type,
                         'currency': p.currency,
                         'unit': p.unit,
                         'source': p.source,
@@ -160,6 +169,7 @@ class InstrumentViewSet(viewsets.ReadOnlyModelViewSet):
                         'high_price': str(p.high_price) if p.high_price is not None else None,
                         'low_price': str(p.low_price) if p.low_price is not None else None,
                         'volume': p.volume,
+                        'published_at': p.published_at.isoformat() if p.published_at else None,
                     }
                     for p in history_res.points
                 ],

@@ -6,15 +6,35 @@ interface PriceFreshnessBadgeProps {
   status: PriceFreshnessStatus;
   isSynthetic?: boolean;
   effectiveAt?: string | null;
+  publishedAt?: string | null;
+  ageSeconds?: number | null;
   className?: string;
 }
+
+const formatRelativeAge = (publishedAt?: string | null, effectiveAt?: string | null): string => {
+  const ts = publishedAt || effectiveAt;
+  if (!ts) return '';
+  const date = new Date(ts);
+  if (isNaN(date.getTime())) return '';
+  const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (diffSec < 0) return 'just now';
+  if (diffSec < 60) return 'just now';
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  const diffDays = Math.floor(diffSec / 86400);
+  if (diffDays === 1) return 'yesterday';
+  return `${diffDays}d ago`;
+};
 
 export const PriceFreshnessBadge: React.FC<PriceFreshnessBadgeProps> = ({
   status,
   isSynthetic,
   effectiveAt,
+  publishedAt,
   className = '',
 }) => {
+  const relativeAge = formatRelativeAge(publishedAt, effectiveAt);
+
   // If explicitly flagged synthetic, emphasize synthetic demo indicator
   if (isSynthetic || status === 'SYNTHETIC') {
     return (
@@ -35,7 +55,13 @@ export const PriceFreshnessBadge: React.FC<PriceFreshnessBadgeProps> = ({
       return (
         <span
           className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 ${className}`}
-          title={effectiveAt ? `Verified market price effective ${new Date(effectiveAt).toLocaleDateString()}` : 'Verified current'}
+          title={
+            publishedAt
+              ? `Verified market price updated ${relativeAge} (${new Date(publishedAt).toLocaleString()})`
+              : effectiveAt
+              ? `Verified market price effective ${new Date(effectiveAt).toLocaleDateString()}`
+              : 'Verified current'
+          }
           role="status"
           aria-label="Verified market price"
         >
@@ -48,7 +74,11 @@ export const PriceFreshnessBadge: React.FC<PriceFreshnessBadgeProps> = ({
       return (
         <span
           className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30 ${className}`}
-          title={effectiveAt ? `Last verified observation was at ${new Date(effectiveAt).toLocaleDateString()}` : 'Observation exceeds freshness threshold'}
+          title={
+            effectiveAt
+              ? `Last verified observation was at ${new Date(effectiveAt).toLocaleDateString()} (${relativeAge})`
+              : 'Observation exceeds freshness threshold'
+          }
           role="status"
           aria-label="Stale market price"
         >

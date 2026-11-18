@@ -215,7 +215,8 @@ class PriceObservationViewSet(viewsets.ModelViewSet):
     """
     Append-only observation lifecycle management:
     draft -> pending_review -> published.
-    Corrections link back to original observation via correction_of.
+    Direct modification via PUT/PATCH is rejected (use correction flow).
+    Published observations cannot be deleted.
     """
 
     queryset = PriceObservation.objects.all().select_related('instrument', 'recorded_by', 'published_by')
@@ -225,8 +226,12 @@ class PriceObservationViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         user = self.request.user
-        # Ordinary users can only see published observations; staff/operators can see drafts
-        if not (user.is_staff or user.is_superuser or user.groups.filter(name='MarketDataOperator').exists()):
+        # Ordinary users can only see published observations; staff/operators/publishers can see drafts
+        if not (
+            user.is_staff
+            or user.is_superuser
+            or user.groups.filter(name__in=['MarketDataOperator', 'MarketDataPublisher']).exists()
+        ):
             qs = qs.filter(status=ObservationStatus.PUBLISHED)
 
         inst_id = self.request.query_params.get('instrument')
@@ -243,17 +248,44 @@ class PriceObservationViewSet(viewsets.ModelViewSet):
             raise permissions.PermissionDenied("Only market data operators can record price observations.")
         serializer.save(recorded_by=self.request.user, status=ObservationStatus.DRAFT)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsMarketDataPublisher])
-    def publish(self, request, pk=None):
+    def update(self, request, *args, **kwargs):
+        return Response(
+            {'detail': 'Price observations cannot be directly modified. Use the correction flow.'},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        return Response(
+            {'detail': 'Price observations cannot be directly modified. Use the correction flow.'},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    def destroy(self, request, *args, **kwargs):
         obs = self.get_object()
         if obs.status == ObservationStatus.PUBLISHED:
-            return Response({'detail': 'Observation is already published.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'detail': 'Published price observations cannot be deleted.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not (request.user.is_staff or request.user.groups.filter(name='MarketDataOperator').exists()):
+            raise permissions.PermissionDenied("Only market data operators can delete draft observations.")
+        return super().destroy(request, *args, **kwargs)
 
-        # 1. Publish observation atomically
-        obs.publish(request.user)
+    @action(detail=True, methods=['post'], permission_classes=[IsMarketDataPublisher])
+    def publish(self, request, pk=None):
+        with transaction.atomic():
+            obs = PriceObservation.objects.select_for_update().get(pk=pk)
+            if obs.status == ObservationStatus.PUBLISHED:
+                return Response({'detail': 'Observation is already published.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 1. Publish observation atomically
+            obs.publish(request.user)
 
         # 2. Trigger valuation refresh across affected holdings with failure isolation
-        refresh_stats = ValuationRefreshService.refresh_holdings_for_instrument(obs.instrument)
+        try:
+            refresh_stats = ValuationRefreshService.refresh_holdings_for_instrument(obs.instrument)
+        except Exception as e:
+            refresh_stats = {'error': str(e), 'refreshed_count': 0, 'failed_count': 0}
 
         return Response(
             {
@@ -276,49 +308,52 @@ class PriceObservationViewSet(viewsets.ModelViewSet):
         return Response(PriceObservationSerializer(obs).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], permission_classes=[IsMarketDataPublisher])
-    @transaction.atomic
     def correct(self, request, pk=None):
-        original_obs = self.get_object()
-        serializer = PriceObservationCorrectionSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
+        with transaction.atomic():
+            original_obs = PriceObservation.objects.select_for_update().get(pk=pk)
+            serializer = PriceObservationCorrectionSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            data = serializer.validated_data
 
-        eff_at = data.get('effective_at') or original_obs.effective_at
+            eff_at = data.get('effective_at') or original_obs.effective_at
 
-        # Create new correction observation
-        correction_obs = PriceObservation.objects.create(
-            instrument=original_obs.instrument,
-            price_type=original_obs.price_type,
-            value=data['value'],
-            currency=original_obs.currency,
-            unit=original_obs.unit,
-            effective_at=eff_at,
-            source=data.get('source', 'MANUAL_CORRECTION'),
-            source_reference=data.get('source_reference', ''),
-            notes=data.get('notes', ''),
-            status=ObservationStatus.PUBLISHED,
-            recorded_by=request.user,
-            published_by=request.user,
-            published_at=timezone.now(),
-            correction_of=original_obs,
-            correction_reason=data['correction_reason'],
-        )
+            # Create new correction observation
+            correction_obs = PriceObservation.objects.create(
+                instrument=original_obs.instrument,
+                price_type=original_obs.price_type,
+                value=data['value'],
+                currency=original_obs.currency,
+                unit=original_obs.unit,
+                effective_at=eff_at,
+                source=data.get('source', 'MANUAL_CORRECTION'),
+                source_reference=data.get('source_reference', ''),
+                notes=data.get('notes', ''),
+                status=ObservationStatus.PUBLISHED,
+                recorded_by=request.user,
+                published_by=request.user,
+                published_at=timezone.now(),
+                correction_of=original_obs,
+                correction_reason=data['correction_reason'],
+            )
 
-        # Sync correction to MarketDataPoint
-        from apps.market_data.models.market_data_point import MarketDataPoint
-        MarketDataPoint.objects.update_or_create(
-            instrument=correction_obs.instrument,
-            timestamp=correction_obs.effective_at,
-            interval='1D',
-            provider=correction_obs.source,
-            defaults={
-                'price': correction_obs.value,
-                'close_price': correction_obs.value,
-            },
-        )
+            # Sync correction to MarketDataPoint
+            from apps.market_data.models.market_data_point import MarketDataPoint
+            MarketDataPoint.objects.update_or_create(
+                instrument=correction_obs.instrument,
+                timestamp=correction_obs.effective_at,
+                interval='1D',
+                provider=correction_obs.source,
+                defaults={
+                    'price': correction_obs.value,
+                    'close_price': correction_obs.value,
+                },
+            )
 
-        # Trigger valuation refresh
-        refresh_stats = ValuationRefreshService.refresh_holdings_for_instrument(correction_obs.instrument)
+        # Trigger valuation refresh with failure isolation outside transaction
+        try:
+            refresh_stats = ValuationRefreshService.refresh_holdings_for_instrument(correction_obs.instrument)
+        except Exception as e:
+            refresh_stats = {'error': str(e), 'refreshed_count': 0, 'failed_count': 0}
 
         return Response(
             {
@@ -360,16 +395,26 @@ class PriceImportPreviewView(APIView):
 class PriceImportCommitView(APIView):
     """
     Commits valid previewed rows as draft PriceObservations and logs row errors.
+    Accepts server-persisted batch_id or legacy preview_result payload.
     """
 
     permission_classes = [permissions.IsAuthenticated, IsMarketDataOperator]
 
     def post(self, request):
+        batch_id = request.data.get('batch_id')
         preview_data = request.data.get('preview_result')
-        if not preview_data or not isinstance(preview_data, dict):
-            return Response({'detail': 'Missing or invalid preview_result payload.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        batch = PriceImportService.commit_import(request.user, preview_data)
+        if not batch_id and not preview_data:
+            return Response({'detail': 'Either batch_id or preview_result is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            if batch_id:
+                batch = PriceImportService.commit_batch(request.user, batch_id)
+            else:
+                batch = PriceImportService.commit_import(request.user, preview_data)
+        except Exception as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
         return Response(
             {
                 'batch_id': str(batch.id),
@@ -385,6 +430,7 @@ class PriceImportCommitView(APIView):
 class PriceResolverView(APIView):
     """
     Resolves authoritative published market price for an instrument as of a requested date.
+    Exposes published_at, price_type, and age_seconds for data freshness and provenance.
     """
 
     permission_classes = [permissions.IsAuthenticated]
@@ -416,11 +462,14 @@ class PriceResolverView(APIView):
                 'symbol': instrument.symbol,
                 'status': resolved.status,
                 'price': str(resolved.price) if resolved.price is not None else None,
+                'price_type': resolved.price_type,
                 'currency': resolved.currency,
                 'unit': resolved.unit,
                 'source': resolved.source,
                 'source_reference': resolved.source_reference,
                 'effective_at': resolved.effective_at.isoformat() if resolved.effective_at else None,
+                'published_at': resolved.published_at.isoformat() if resolved.published_at else None,
+                'age_seconds': resolved.age_seconds,
                 'is_synthetic': resolved.is_synthetic,
                 'notes': resolved.notes,
             },

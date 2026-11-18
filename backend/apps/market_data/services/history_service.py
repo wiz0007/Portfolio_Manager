@@ -25,6 +25,8 @@ class HistoryPoint:
     high_price: Optional[Decimal] = None
     low_price: Optional[Decimal] = None
     volume: Optional[int] = None
+    price_type: str = 'LTP'
+    published_at: Optional[datetime] = None
 
 
 @dataclass
@@ -73,6 +75,34 @@ class MarketHistoryService:
         if start_date or end_date:
             resolved_end = end_date or today
             resolved_start = start_date or (resolved_end - timedelta(days=30))
+        elif period_upper == 'ALL':
+            resolved_end = today
+            # Dynamically determine earliest available observation date
+            earliest_obs = (
+                PriceObservation.objects.filter(
+                    instrument=instrument,
+                    status=ObservationStatus.PUBLISHED,
+                    effective_at__lte=datetime.combine(resolved_end, datetime.max.time(), tzinfo=timezone.utc),
+                )
+                .exclude(corrections__status=ObservationStatus.PUBLISHED)
+                .order_by('effective_at')
+                .first()
+            )
+            if earliest_obs:
+                resolved_start = earliest_obs.effective_at.date()
+            else:
+                earliest_mdp = (
+                    MarketDataPoint.objects.filter(
+                        instrument=instrument,
+                        timestamp__lte=datetime.combine(resolved_end, datetime.max.time(), tzinfo=timezone.utc),
+                    )
+                    .order_by('timestamp')
+                    .first()
+                )
+                if earliest_mdp:
+                    resolved_start = earliest_mdp.timestamp.date()
+                else:
+                    resolved_start = today - timedelta(days=365 * 5)
         else:
             days = PERIOD_DAYS_MAP.get(period_upper, 30)
             resolved_end = today
@@ -88,12 +118,15 @@ class MarketHistoryService:
         start_dt = datetime.combine(resolved_start, datetime.min.time(), tzinfo=timezone.utc)
         end_dt = datetime.combine(resolved_end, datetime.max.time(), tzinfo=timezone.utc)
 
-        # 1. Query verified published PriceObservation records
-        obs_qs = PriceObservation.objects.filter(
-            instrument=instrument,
-            status=ObservationStatus.PUBLISHED,
-            effective_at__gte=start_dt,
-            effective_at__lte=end_dt,
+        # 1. Query verified published PriceObservation records (excluding superseded ones)
+        obs_qs = (
+            PriceObservation.objects.filter(
+                instrument=instrument,
+                status=ObservationStatus.PUBLISHED,
+                effective_at__gte=start_dt,
+                effective_at__lte=end_dt,
+            )
+            .exclude(corrections__status=ObservationStatus.PUBLISHED)
         )
         if price_type:
             obs_qs = obs_qs.filter(price_type=price_type)
@@ -110,6 +143,8 @@ class MarketHistoryService:
                     unit=obs.unit,
                     source=obs.source,
                     is_synthetic=obs.is_synthetic,
+                    price_type=obs.price_type,
+                    published_at=obs.published_at,
                 )
                 for obs in published_obs
             ]
