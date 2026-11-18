@@ -14,6 +14,14 @@ export interface ManualValuationModalProps {
   onSuccess: () => void;
 }
 
+const getTodayLocalDate = (): string => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export const ManualValuationModal: React.FC<ManualValuationModalProps> = ({
   portfolioId,
   investmentId,
@@ -24,10 +32,9 @@ export const ManualValuationModal: React.FC<ManualValuationModalProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
+  const todayStr = getTodayLocalDate();
   const [amount, setAmount] = useState<string>(String(currentValue || ''));
-  const [valuationDate, setValuationDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
+  const [valuationDate, setValuationDate] = useState<string>(todayStr);
   const [notes, setNotes] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -38,6 +45,9 @@ export const ManualValuationModal: React.FC<ManualValuationModalProps> = ({
       queryClient.invalidateQueries({ queryKey: ['investment', portfolioId, investmentId] });
       queryClient.invalidateQueries({ queryKey: ['investment-valuations', investmentId] });
       queryClient.invalidateQueries({ queryKey: ['investments'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['holdings'] });
+      queryClient.invalidateQueries({ queryKey: ['portfolios'] });
       onSuccess();
     },
     onError: (err: any) => {
@@ -54,13 +64,14 @@ export const ManualValuationModal: React.FC<ManualValuationModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
-    const num = parseFloat(amount);
-    if (isNaN(num) || num <= 0) {
+    const trimmed = amount.trim();
+    const num = parseFloat(trimmed);
+    if (!trimmed || isNaN(num) || num <= 0) {
       setErrorMsg('Please enter a valid positive valuation amount.');
       return;
     }
     mutation.mutate({
-      amount: num,
+      amount: trimmed,
       valuation_date: valuationDate,
       notes,
     });
@@ -133,7 +144,7 @@ export const ManualValuationModal: React.FC<ManualValuationModalProps> = ({
               <input
                 type="date"
                 required
-                max={new Date().toISOString().split('T')[0]}
+                max={todayStr}
                 value={valuationDate}
                 onChange={(e) => setValuationDate(e.target.value)}
                 className="w-full px-3 py-2 bg-theme-bg border border-theme-border rounded-lg text-sm text-theme-text focus:outline-none focus:border-theme-primary"

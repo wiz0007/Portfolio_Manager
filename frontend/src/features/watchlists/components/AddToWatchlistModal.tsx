@@ -132,7 +132,7 @@ export const AddToWatchlistModal: React.FC<AddToWatchlistModalProps> = ({
             <label className="block text-xs font-semibold text-theme-text mb-1.5">
               <span className="flex items-center gap-1.5">
                 <BellRing className="h-3.5 w-3.5 text-theme-primary" />
-                Target Alert Price (Optional)
+                Configured Price Target (Optional)
               </span>
             </label>
             <div className="relative">

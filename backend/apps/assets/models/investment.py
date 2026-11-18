@@ -114,6 +114,8 @@ class Investment(models.Model):
     @property
     def details(self):
         """Dynamic lookup of attached asset-specific detail model as a dictionary."""
+        if hasattr(self, '_custom_details') and self._custom_details is not None:
+            return self._custom_details
         for rel in (
             'cash_detail',
             'deposit_detail',
@@ -136,10 +138,30 @@ class Investment(models.Model):
                 pass
         return {}
 
+    @details.setter
+    def details(self, value):
+        self._custom_details = value
+
     @property
     def quantity(self):
         """Convenience property for quantity/units from attached detail record."""
         det = self.details
         if not det:
             return None
+        if det.get('property_type') == 'REIT' and det.get('area') is not None:
+            return det.get('area')
         return det.get('quantity') or det.get('units') or det.get('weight_grams')
+
+    @property
+    def purchase_price(self):
+        """Convenience property for purchase price from attached detail record."""
+        det = self.details
+        if not det:
+            return None
+        return (
+            det.get('purchase_price')
+            or det.get('average_buy_price')
+            or det.get('purchase_price_per_share')
+            or det.get('purchase_nav')
+            or det.get('average_purchase_nav')
+        )

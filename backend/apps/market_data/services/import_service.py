@@ -241,45 +241,9 @@ class PriceImportService:
     def commit_import(cls, user, preview_result: Dict[str, Any]) -> PriceImportBatch:
         """
         Persists validated rows as draft PriceObservations and logs batch audit history.
-        Delegates to commit_batch if batch_id is present.
+        Strictly requires server-persisted batch_id.
         """
         batch_id = preview_result.get('batch_id')
-        if batch_id:
-            return cls.commit_batch(user, batch_id)
-        batch = PriceImportBatch.objects.create(
-            user=user,
-            filename=preview_result.get('filename', 'import.csv'),
-            schema_version='1.0',
-            total_rows=preview_result.get('total_rows', 0),
-            valid_rows=preview_result.get('valid_count', 0),
-            error_rows=preview_result.get('error_count', 0),
-            status=ImportBatchStatus.COMMITTED if preview_result.get('valid_count', 0) > 0 else ImportBatchStatus.FAILED,
-        )
-
-        # Log row errors for operator report download
-        for err in preview_result.get('errors', []):
-            PriceImportRowError.objects.create(
-                batch=batch,
-                row_number=err['row_number'],
-                raw_data=err.get('raw_data', {}),
-                error_field=err.get('field', ''),
-                error_message=err.get('error', ''),
-            )
-
-        # Create draft PriceObservation for every valid row
-        for row in preview_result.get('valid_rows', []):
-            PriceObservation.objects.create(
-                instrument_id=row['instrument_id'],
-                price_type=row['price_type'],
-                value=Decimal(row['value']),
-                currency=row['currency'],
-                unit=row['unit'],
-                effective_at=datetime.fromisoformat(row['effective_at']),
-                source=row['source'],
-                source_reference=row['source_reference'],
-                notes=f"[Batch {batch.id}] {row['notes']}".strip(),
-                status=ObservationStatus.DRAFT,
-                recorded_by=user,
-            )
-
-        return batch
+        if not batch_id:
+            raise ValidationError("Server-persisted batch_id is required. Direct client row commitment is disabled for security.")
+        return cls.commit_batch(user, batch_id)

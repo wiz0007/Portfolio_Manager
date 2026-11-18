@@ -51,8 +51,8 @@ export function useLogout() {
   return useMutation({
     mutationFn: () => authService.logout(),
     onSuccess: () => {
+      queryClient.clear();
       queryClient.setQueryData(AUTH_USER_QUERY_KEY, null);
-      queryClient.invalidateQueries({ queryKey: AUTH_USER_QUERY_KEY });
     },
   });
 }

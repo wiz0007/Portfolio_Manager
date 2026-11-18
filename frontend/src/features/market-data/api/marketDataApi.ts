@@ -127,6 +127,10 @@ export const marketDataApi = {
     return apiClient.get(`/market-data/observations/${qs}`);
   },
 
+  submitPriceObservationForReview: (id: string) => {
+    return apiClient.post(`/market-data/observations/${id}/submit-for-review/`);
+  },
+
   publishPriceObservation: (id: string) => {
     return apiClient.post(`/market-data/observations/${id}/publish/`);
   },
@@ -144,7 +148,8 @@ export const marketDataApi = {
   },
 
   commitCsvImport: (previewResult: Record<string, unknown>) => {
-    return apiClient.post('/market-data/import/commit/', { preview_result: previewResult });
+    const batchId = (previewResult as { batch_id?: string }).batch_id;
+    return apiClient.post('/market-data/import/commit/', { batch_id: batchId });
   },
 
   resolvePrice: (instrumentId: string, asOf?: string) => {

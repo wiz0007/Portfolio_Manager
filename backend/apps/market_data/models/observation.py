@@ -122,6 +122,17 @@ class PriceObservation(models.Model):
         if self.correction_of and not self.correction_reason:
             raise ValidationError({'correction_reason': 'Correction reason is required when correcting an observation.'})
 
+    def submit_for_review(self) -> None:
+        """
+        Transition draft observation to pending_review.
+        """
+        if self.status != ObservationStatus.DRAFT:
+            raise ValidationError(
+                f"Cannot submit observation in status '{self.status}' for review. Must be in DRAFT."
+            )
+        self.status = ObservationStatus.PENDING_REVIEW
+        self.save(update_fields=['status', 'updated_at'])
+
     def publish(self, publisher) -> None:
         """
         Transition observation to published. Once published, record is immutable.
@@ -129,6 +140,10 @@ class PriceObservation(models.Model):
         """
         if self.status == ObservationStatus.PUBLISHED:
             return
+        if self.status != ObservationStatus.PENDING_REVIEW:
+            raise ValidationError(
+                f"Cannot publish observation in status '{self.status}'. Must be in PENDING_REVIEW."
+            )
         if not publisher:
             raise ValidationError('A publisher must be specified to publish an observation.')
         self.status = ObservationStatus.PUBLISHED

@@ -40,7 +40,7 @@ export const WatchlistTable: React.FC<WatchlistTableProps> = ({
             <th className="py-3.5 px-4 text-right">Latest Price</th>
             <th className="py-3.5 px-4 text-right">Session Movement</th>
             <th className="py-3.5 px-4 text-center">Status</th>
-            <th className="py-3.5 px-4">Target Alert</th>
+            <th className="py-3.5 px-4">Configured Price Target</th>
             <th className="py-3.5 px-4 text-right">Actions</th>
           </tr>
         </thead>

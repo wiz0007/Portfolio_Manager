@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from django.core.exceptions import ObjectDoesNotExist
+from django.db.models import DecimalField, ExpressionWrapper, F
 
 from apps.assets.models.investment import AssetCategory, Investment
 from apps.assets.models.transactions import InvestmentTransaction
@@ -373,19 +374,23 @@ class DashboardService:
 
         total_count = inv_qs.count()
 
-        # Database-side pagination for direct DB columns
-        can_db_sort = sort_by in ('current_value', 'invested_capital', 'display_name')
-        if can_db_sort:
-            col_map = {
-                'current_value': 'current_value',
-                'invested_capital': 'initial_value',
-                'display_name': 'display_name',
-            }
-            db_col = col_map[sort_by]
-            prefix = '-' if order.lower() == 'desc' else ''
-            paged_investments = list(inv_qs.order_by(f"{prefix}{db_col}")[offset: offset + limit])
-        else:
-            paged_investments = list(inv_qs)
+        # Database-side SQL annotation and deterministic secondary sort for all sort fields
+        inv_qs = inv_qs.annotate(
+            db_gain_loss=ExpressionWrapper(
+                F('current_value') - F('initial_value'),
+                output_field=DecimalField(max_digits=18, decimal_places=4),
+            )
+        )
+
+        col_map = {
+            'current_value': 'current_value',
+            'invested_capital': 'initial_value',
+            'display_name': 'display_name',
+            'gain_loss': 'db_gain_loss',
+        }
+        db_col = col_map.get(sort_by, 'current_value')
+        prefix = '-' if order.lower() == 'desc' else ''
+        paged_investments = list(inv_qs.order_by(f"{prefix}{db_col}", '-id')[offset: offset + limit])
 
         # Bulk resolve market prices for instruments
         instruments = [inv.instrument for inv in paged_investments if inv.instrument]
@@ -444,18 +449,9 @@ class DashboardService:
                 'valuation_status': val_status,
                 'price_freshness': freshness,
                 'is_stale': is_stale,
-                '_raw_gain_loss': abs_gl,
             })
 
-        if not can_db_sort:
-            reverse = (order.lower() == 'desc')
-            annotated.sort(key=lambda x: x['_raw_gain_loss'], reverse=reverse)
-            paged_results = annotated[offset: offset + limit]
-        else:
-            paged_results = annotated
-
-        for h in paged_results:
-            h.pop('_raw_gain_loss', None)
+        paged_results = annotated
 
         return {
             'count': total_count,

@@ -271,12 +271,29 @@ class PriceObservationViewSet(viewsets.ModelViewSet):
             raise permissions.PermissionDenied("Only market data operators can delete draft observations.")
         return super().destroy(request, *args, **kwargs)
 
+    @action(detail=True, methods=['post'], permission_classes=[IsMarketDataOperator], url_path='submit-for-review')
+    def submit_for_review(self, request, pk=None):
+        with transaction.atomic():
+            obs = PriceObservation.objects.select_for_update().get(pk=pk)
+            if obs.status != ObservationStatus.DRAFT:
+                return Response(
+                    {'detail': f"Cannot submit observation in status '{obs.status}' for review. Must be in DRAFT."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            obs.submit_for_review()
+        return Response(PriceObservationSerializer(obs).data, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['post'], permission_classes=[IsMarketDataPublisher])
     def publish(self, request, pk=None):
         with transaction.atomic():
             obs = PriceObservation.objects.select_for_update().get(pk=pk)
             if obs.status == ObservationStatus.PUBLISHED:
                 return Response({'detail': 'Observation is already published.'}, status=status.HTTP_400_BAD_REQUEST)
+            if obs.status != ObservationStatus.PENDING_REVIEW:
+                return Response(
+                    {'detail': f"Cannot publish observation in status '{obs.status}'. Must be in PENDING_REVIEW."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             # 1. Publish observation atomically
             obs.publish(request.user)
@@ -311,6 +328,16 @@ class PriceObservationViewSet(viewsets.ModelViewSet):
     def correct(self, request, pk=None):
         with transaction.atomic():
             original_obs = PriceObservation.objects.select_for_update().get(pk=pk)
+            if original_obs.status != ObservationStatus.PUBLISHED:
+                return Response(
+                    {'detail': 'Only published observations can be corrected.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if original_obs.corrections.filter(status=ObservationStatus.PUBLISHED).exists():
+                return Response(
+                    {'detail': 'This observation has already been superseded by an active correction.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             serializer = PriceObservationCorrectionSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             data = serializer.validated_data
@@ -394,24 +421,18 @@ class PriceImportPreviewView(APIView):
 
 class PriceImportCommitView(APIView):
     """
-    Commits valid previewed rows as draft PriceObservations and logs row errors.
-    Accepts server-persisted batch_id or legacy preview_result payload.
+    Commits valid previewed rows as draft PriceObservations using server-persisted batch_id.
     """
 
     permission_classes = [permissions.IsAuthenticated, IsMarketDataOperator]
 
     def post(self, request):
         batch_id = request.data.get('batch_id')
-        preview_data = request.data.get('preview_result')
-
-        if not batch_id and not preview_data:
-            return Response({'detail': 'Either batch_id or preview_result is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not batch_id:
+            return Response({'detail': 'batch_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            if batch_id:
-                batch = PriceImportService.commit_batch(request.user, batch_id)
-            else:
-                batch = PriceImportService.commit_import(request.user, preview_data)
+            batch = PriceImportService.commit_batch(request.user, batch_id)
         except Exception as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 

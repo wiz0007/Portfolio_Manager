@@ -182,6 +182,55 @@ export const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({
           </div>
         </div>
       </div>
+
+      {hasMultipleCurrencies && overview.totals_by_currency && (
+        <div className="space-y-2 mt-4 pt-2 border-t border-theme-border/60">
+          <div className="text-xs font-semibold text-theme-text-muted uppercase tracking-wider">
+            Currency Breakdown
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {Object.entries(overview.totals_by_currency).map(([currKey, currSummary]) => {
+              const cGainLoss = currSummary.absolute_gain_loss || '0.00';
+              const cIsPos = parseFloat(cGainLoss) > 0;
+              const cIsNeg = parseFloat(cGainLoss) < 0;
+              const cColor = cIsPos ? 'text-emerald-400' : cIsNeg ? 'text-rose-400' : 'text-theme-text-muted';
+              return (
+                <div key={currKey} className="p-3.5 rounded-xl border border-theme-border bg-theme-surface/70 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-sm text-theme-text">{currKey}</span>
+                    <span className="text-xs text-theme-text-muted">
+                      {currSummary.total_investment_count} {currSummary.total_investment_count === 1 ? 'asset' : 'assets'}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between text-xs">
+                    <span className="text-theme-text-muted">Value:</span>
+                    <span className="font-semibold text-theme-text">
+                      {currKey} {formatCurrency(currSummary.total_current_value)}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between text-xs">
+                    <span className="text-theme-text-muted">Invested:</span>
+                    <span className="text-theme-text-muted">
+                      {currKey} {formatCurrency(currSummary.total_invested_capital)}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between text-xs pt-1 border-t border-theme-border/40">
+                    <span className="text-theme-text-muted">Gain/Loss:</span>
+                    <span className={`font-semibold ${cColor}`}>
+                      {cIsPos ? `+${formatCurrency(cGainLoss)}` : formatCurrency(cGainLoss)}
+                      {currSummary.gain_loss_percentage && (
+                        <span className="ml-1 text-[11px]">
+                          ({cIsPos ? '+' : ''}{parseFloat(currSummary.gain_loss_percentage).toFixed(2)}%)
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Optional
 
 from apps.assets.models.investment import Investment
-from apps.market_data.services.market_data_service import MarketDataService
+from apps.market_data.services.price_resolver import PriceResolver, ResolutionStatus
 from apps.valuation.services.asset_valuation.base import (
     BaseAssetValuationStrategy,
     ValuationResult,
@@ -58,24 +58,35 @@ class CryptoValuationStrategy(BaseAssetValuationStrategy):
         source_name = 'USER_INPUT'
         source_ref = details.get('symbol', 'CRYPTO')
         is_synthetic = False
+        val_status = ValuationStatus.SUCCESS
 
+        # 1. Check instrument link via canonical PriceResolver
         if investment.instrument:
             try:
-                quote = MarketDataService.get_latest_quote(investment.instrument)
-                if quote and quote.price:
-                    market_price = quote.price
-                    source_name = quote.provider or 'MARKET_FEED'
-                    source_ref = investment.instrument.symbol
-                    is_synthetic = quote.is_synthetic
-                    if quote.timestamp:
-                        obs_dt = quote.timestamp
+                resolved = PriceResolver.resolve_price(investment.instrument, as_of=obs_dt)
+                if resolved.price is not None and resolved.status in (
+                    ResolutionStatus.AVAILABLE,
+                    ResolutionStatus.STALE,
+                    ResolutionStatus.SYNTHETIC,
+                ):
+                    market_price = resolved.price
+                    source_name = resolved.source or 'MANUAL_VERIFIED'
+                    source_ref = resolved.source_reference or investment.instrument.symbol
+                    is_synthetic = resolved.is_synthetic
+                    if resolved.effective_at:
+                        obs_dt = resolved.effective_at
+                    if resolved.status == ResolutionStatus.STALE:
+                        val_status = ValuationStatus.STALE_DATA
             except Exception:
                 pass
 
+        # 2. Check for user explicit estimate
         if market_price is None:
-            raw_p = details.get('current_price') or details.get('purchase_price_per_token') or details.get('buy_price')
+            raw_p = details.get('current_price') or details.get('user_estimate')
             if raw_p is not None:
                 market_price = to_decimal(raw_p)
+                source_name = 'USER_ESTIMATE'
+                val_status = ValuationStatus.ESTIMATED
             else:
                 return ValuationResult(
                     current_value=None,
@@ -96,7 +107,7 @@ class CryptoValuationStrategy(BaseAssetValuationStrategy):
             source_reference=source_ref,
             observed_at=obs_dt,
             currency=investment.currency,
-            status=ValuationStatus.SUCCESS,
+            status=val_status,
             is_synthetic=is_synthetic,
             metadata={
                 'quantity': str(quantity),

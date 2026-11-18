@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -5,6 +6,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
+from django.db import connection, transaction
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -18,6 +20,7 @@ from apps.market_data.services.history_service import MarketHistoryService
 from apps.market_data.services.import_service import PriceImportService, clean_cell
 from apps.market_data.services.price_resolver import PriceResolver, ResolutionStatus
 from apps.portfolios.models import Portfolio
+from apps.valuation.services.asset_valuation.base import ValuationStatus
 from apps.watchlists.services.watchlist_service import WatchlistService
 
 User = get_user_model()
@@ -316,6 +319,87 @@ class TestPriceObservationSecurityAndLifecycle:
         assert obs.status == ObservationStatus.PUBLISHED
         assert obs.published_by == pub
 
+    def test_draft_cannot_be_published_directly(self, api_client, canonical_instruments, users):
+        inst = canonical_instruments['infy']
+        op = users['operator']
+        pub = users['publisher']
+        now = datetime.now(timezone.utc)
+
+        obs = PriceObservation.objects.create(
+            instrument=inst,
+            price_type='LTP',
+            value=Decimal('1855.00'),
+            currency='INR',
+            effective_at=now,
+            source='NSE',
+            status=ObservationStatus.DRAFT,
+            recorded_by=op,
+        )
+
+        api_client.force_authenticate(user=pub)
+        pub_resp = api_client.post(f'/api/v1/market-data/observations/{obs.id}/publish/')
+        assert pub_resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'PENDING_REVIEW' in str(pub_resp.data)
+
+        # Operator submits for review
+        api_client.force_authenticate(user=op)
+        sub_resp = api_client.post(f'/api/v1/market-data/observations/{obs.id}/submit-for-review/')
+        assert sub_resp.status_code == status.HTTP_200_OK
+        obs.refresh_from_db()
+        assert obs.status == ObservationStatus.PENDING_REVIEW
+
+        # Now publisher can publish
+        api_client.force_authenticate(user=pub)
+        pub_resp2 = api_client.post(f'/api/v1/market-data/observations/{obs.id}/publish/')
+        assert pub_resp2.status_code == status.HTTP_200_OK
+        obs.refresh_from_db()
+        assert obs.status == ObservationStatus.PUBLISHED
+
+    def test_correction_rules_enforced(self, api_client, canonical_instruments, users):
+        inst = canonical_instruments['infy']
+        op = users['operator']
+        pub = users['publisher']
+        now = datetime.now(timezone.utc)
+
+        obs_draft = PriceObservation.objects.create(
+            instrument=inst,
+            price_type='LTP',
+            value=Decimal('1855.00'),
+            currency='INR',
+            effective_at=now,
+            source='NSE',
+            status=ObservationStatus.DRAFT,
+            recorded_by=op,
+        )
+
+        api_client.force_authenticate(user=pub)
+        # 1. Reject correction on non-published observation
+        corr_resp = api_client.post(
+            f'/api/v1/market-data/observations/{obs_draft.id}/correct/',
+            {'value': '1860.00', 'correction_reason': 'Data entry error'},
+        )
+        assert corr_resp.status_code == status.HTTP_400_BAD_REQUEST
+
+        # Transition to published
+        obs_draft.status = ObservationStatus.PENDING_REVIEW
+        obs_draft.save()
+        obs_draft.publish(pub)
+
+        # 2. First correction succeeds
+        corr_resp1 = api_client.post(
+            f'/api/v1/market-data/observations/{obs_draft.id}/correct/',
+            {'value': '1860.00', 'correction_reason': 'Data entry error'},
+        )
+        assert corr_resp1.status_code == status.HTTP_201_CREATED
+
+        # 3. Second correction on the same original observation is rejected
+        corr_resp2 = api_client.post(
+            f'/api/v1/market-data/observations/{obs_draft.id}/correct/',
+            {'value': '1865.00', 'correction_reason': 'Another correction'},
+        )
+        assert corr_resp2.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'superseded' in str(corr_resp2.data)
+
 
 @pytest.mark.django_db
 class TestCSVImportIntegrity:
@@ -353,6 +437,13 @@ class TestCSVImportIntegrity:
         # Attempting to commit again must fail
         with pytest.raises(ValidationError):
             PriceImportService.commit_batch(op, batch_id)
+
+    def test_csv_commit_without_batch_id_rejected(self, api_client, users):
+        op = users['operator']
+        api_client.force_authenticate(user=op)
+        resp = api_client.post('/api/v1/market-data/import/commit/', {'preview_result': {'valid_rows': []}}, format='json')
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'batch_id' in str(resp.data)
 
 
 @pytest.mark.django_db
@@ -509,3 +600,300 @@ class TestDashboardFinancialCorrectness:
         assert dq['categories']['awaiting_verification']['count'] == 1
         items = dq['categories']['awaiting_verification']['items']
         assert items[0]['display_name'] == 'TCS Holding'
+
+
+@pytest.mark.django_db(transaction=True)
+class TestConcurrencyStabilization:
+    def test_watchlist_multithreaded_concurrency(self, canonical_instruments, users):
+        import time
+        from apps.watchlists.models import WatchlistItem
+
+        inst = canonical_instruments['infy']
+        user = users['user']
+
+        successes = []
+        errors = []
+
+        def attempt_add(i):
+            for _ in range(10):
+                try:
+                    item = WatchlistService.add_item(user, inst.id)
+                    successes.append(item)
+                    break
+                except ValidationError as e:
+                    errors.append(e)
+                    break
+                except Exception as e:
+                    time.sleep(0.02)
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            list(executor.map(attempt_add, range(5)))
+
+        assert len(successes) == 1
+        assert WatchlistItem.objects.filter(user=user, instrument=inst).count() == 1
+        assert len(errors) == 4
+
+    def test_observation_publication_multithreaded_concurrency(self, canonical_instruments, users):
+        inst = canonical_instruments['infy']
+        op = users['operator']
+        pub = users['publisher']
+        now = datetime.now(timezone.utc)
+
+        obs = PriceObservation.objects.create(
+            instrument=inst,
+            price_type='LTP',
+            value=Decimal('1855.00'),
+            currency='INR',
+            effective_at=now,
+            source='NSE',
+            status=ObservationStatus.PENDING_REVIEW,
+            recorded_by=op,
+        )
+
+        successes = []
+        errors = []
+
+        def attempt_publish(i):
+            try:
+                with transaction.atomic():
+                    locked = PriceObservation.objects.select_for_update().get(id=obs.id)
+                    locked.publish(pub)
+                    successes.append(locked)
+            except Exception as e:
+                errors.append(e)
+            finally:
+                connection.close()
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            list(executor.map(attempt_publish, range(4)))
+
+        obs.refresh_from_db()
+        assert obs.status == ObservationStatus.PUBLISHED
+
+
+@pytest.mark.django_db
+class TestProductMappingStabilization:
+    def test_government_bond_detail_creation(self, api_client, users):
+        user = users['user']
+        portfolio = Portfolio.objects.create(user=user, name='Fixed Income Portfolio', base_currency='INR')
+        api_client.force_authenticate(user=user)
+
+        payload = {
+            'portfolio': str(portfolio.id),
+            'category': 'fixed_income',
+            'asset_type': 'government_bond',
+            'display_name': '7.18% GS 2033',
+            'initial_value': '10000.00',
+            'currency': 'INR',
+            'details': {
+                'bond_name': '7.18% GS 2033',
+                'issuer': 'Government of India',
+                'bond_type': 'SOVEREIGN',
+                'face_value': '100.00',
+                'purchase_price': '100.00',
+                'quantity': '100',
+                'coupon_rate_pct': '7.18',
+                'coupon_frequency': 'SEMI_ANNUALLY',
+                'purchase_date': '2024-01-15',
+                'maturity_date': '2033-08-14',
+            },
+        }
+        resp = api_client.post('/api/v1/investments/', payload, format='json')
+        assert resp.status_code == status.HTTP_201_CREATED
+        inv = Investment.objects.get(id=resp.data['id'])
+        assert hasattr(inv, 'bond_detail')
+        assert inv.bond_detail.issuer_name == 'Government of India'
+
+    def test_reit_detail_creation(self, api_client, users):
+        user = users['user']
+        portfolio = Portfolio.objects.create(user=user, name='Real Estate Portfolio', base_currency='INR')
+        api_client.force_authenticate(user=user)
+
+        payload = {
+            'portfolio': str(portfolio.id),
+            'category': 'real_estate',
+            'asset_type': 'reit',
+            'display_name': 'Embassy Office Parks REIT',
+            'initial_value': '35000.00',
+            'currency': 'INR',
+            'details': {
+                'property_nickname': 'Embassy REIT Units',
+                'property_type': 'REIT',
+                'purchase_price': '35000.00',
+                'units': '100',
+                'acquisition_date': '2024-02-01',
+                'country': 'India',
+                'state': 'Karnataka',
+            },
+        }
+        resp = api_client.post('/api/v1/investments/', payload, format='json')
+        assert resp.status_code == status.HTTP_201_CREATED
+        inv = Investment.objects.get(id=resp.data['id'])
+        assert inv.quantity == Decimal('100.0000')
+        assert hasattr(inv, 'real_estate_detail')
+        assert inv.real_estate_detail.property_type == 'REIT'
+
+
+@pytest.mark.django_db
+class TestValuationStrategyUnification:
+    def test_equity_valuation_strategy_no_silent_success_fallback(self, canonical_instruments, users):
+        from apps.assets.models import EquityDetail
+        from apps.valuation.services.asset_valuation.equity import EquityValuationStrategy
+        inst = canonical_instruments['infy']
+        user = users['user']
+        portfolio = Portfolio.objects.create(user=user, name='EQ Portfolio', base_currency='INR')
+
+        # Investment with NO market observations published
+        inv = Investment.objects.create(
+            user=user,
+            portfolio=portfolio,
+            instrument=inst,
+            category=AssetCategory.EQUITY,
+            asset_type='stock',
+            display_name='Infosys Holding',
+            initial_value=Decimal('15000.00'),
+            current_value=Decimal('15000.00'),
+            currency='INR',
+            is_active=True,
+        )
+        EquityDetail.objects.create(
+            investment=inv,
+            company_name='Infosys Limited',
+            symbol='INFY',
+            quantity=Decimal('10'),
+            average_buy_price=Decimal('1500.00'),
+            purchase_date=date.today(),
+        )
+
+        strategy = EquityValuationStrategy()
+        val = strategy.evaluate(inv)
+
+        # Must NOT silently return SUCCESS with purchase price!
+        assert val.status == ValuationStatus.MARKET_DATA_UNAVAILABLE
+        assert val.current_value is None
+
+    def test_equity_valuation_strategy_resolves_published_price(self, canonical_instruments, users):
+        from apps.assets.models import EquityDetail
+        from apps.valuation.services.asset_valuation.equity import EquityValuationStrategy
+        inst = canonical_instruments['infy']
+        user = users['user']
+        pub = users['publisher']
+        portfolio = Portfolio.objects.create(user=user, name='EQ Portfolio', base_currency='INR')
+        now = datetime.now(timezone.utc)
+
+        PriceObservation.objects.create(
+            instrument=inst,
+            price_type='LTP',
+            value=Decimal('1850.00'),
+            currency='INR',
+            effective_at=now,
+            source='NSE_VERIFIED',
+            status=ObservationStatus.PUBLISHED,
+            recorded_by=pub,
+            published_by=pub,
+            published_at=now,
+        )
+
+        inv = Investment.objects.create(
+            user=user,
+            portfolio=portfolio,
+            instrument=inst,
+            category=AssetCategory.EQUITY,
+            asset_type='stock',
+            display_name='Infosys Holding',
+            initial_value=Decimal('15000.00'),
+            current_value=Decimal('15000.00'),
+            currency='INR',
+            is_active=True,
+        )
+        EquityDetail.objects.create(
+            investment=inv,
+            company_name='Infosys Limited',
+            symbol='INFY',
+            quantity=Decimal('10'),
+            average_buy_price=Decimal('1500.00'),
+            purchase_date=date.today(),
+        )
+
+        strategy = EquityValuationStrategy()
+        val = strategy.evaluate(inv)
+
+        assert val.status == ValuationStatus.SUCCESS
+        assert val.current_value == Decimal('18500.00')
+        assert val.source == 'NSE_VERIFIED'
+
+    def test_equity_valuation_strategy_user_estimate(self, canonical_instruments, users):
+        from apps.valuation.services.asset_valuation.equity import EquityValuationStrategy
+        inst = canonical_instruments['infy']
+        user = users['user']
+        portfolio = Portfolio.objects.create(user=user, name='EQ Portfolio', base_currency='INR')
+
+        inv = Investment.objects.create(
+            user=user,
+            portfolio=portfolio,
+            instrument=inst,
+            category=AssetCategory.EQUITY,
+            asset_type='stock',
+            display_name='Infosys Holding',
+            initial_value=Decimal('15000.00'),
+            current_value=Decimal('15000.00'),
+            currency='INR',
+            is_active=True,
+        )
+        inv.details = {'quantity': Decimal('10'), 'current_price': '1800.00'}
+
+        strategy = EquityValuationStrategy()
+        val = strategy.evaluate(inv)
+
+        assert val.status == ValuationStatus.ESTIMATED
+        assert val.current_value == Decimal('18000.00')
+        assert val.source == 'USER_ESTIMATE'
+        assert val.source == 'USER_ESTIMATE'
+
+    def test_serializer_exposes_market_data_fields(self, canonical_instruments, users):
+        from apps.watchlists.api.v1.serializers import MarketDataAnnotationSerializer
+        inst = canonical_instruments['infy']
+        pub = users['publisher']
+        now = datetime.now(timezone.utc)
+
+        obs = PriceObservation.objects.create(
+            instrument=inst,
+            price_type='LTP',
+            value=Decimal('1850.00'),
+            currency='INR',
+            effective_at=now,
+            source='NSE',
+            status=ObservationStatus.PUBLISHED,
+            recorded_by=pub,
+            published_by=pub,
+            published_at=now,
+        )
+
+        data = {
+            'price': obs.value,
+            'currency': obs.currency,
+            'unit': obs.unit,
+            'effective_at': obs.effective_at,
+            'published_at': obs.published_at,
+            'price_type': obs.price_type,
+            'age_seconds': 120,
+            'status': 'AVAILABLE',
+            'source': obs.source,
+            'source_reference': 'INFY',
+            'is_synthetic': False,
+            'notes': '',
+            'movement': {
+                'change_amount': None,
+                'change_percent': None,
+                'previous_price': None,
+                'previous_effective_at': None,
+                'status': 'NO_CHANGE',
+                'notes': '',
+            },
+        }
+
+        serializer = MarketDataAnnotationSerializer(data)
+        out = serializer.data
+        assert out['published_at'] is not None
+        assert out['price_type'] == 'LTP'
+        assert out['age_seconds'] == 120
