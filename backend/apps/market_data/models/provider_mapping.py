@@ -16,6 +16,7 @@ class ProviderInstrumentMapping(models.Model):
         Instrument,
         on_delete=models.CASCADE,
         related_name='provider_mappings',
+        db_constraint=False,
     )
     provider_name = models.CharField(max_length=32, db_index=True)
     provider_symbol = models.CharField(max_length=128)

@@ -82,5 +82,6 @@ export function useInvalidateDashboard() {
   return () => {
     queryClient.invalidateQueries({ queryKey: DASHBOARD_OVERVIEW_QUERY_KEY });
     queryClient.invalidateQueries({ queryKey: DASHBOARD_BASE_KEY });
+    queryClient.invalidateQueries({ queryKey: ['watchlist'] });
   };
 }

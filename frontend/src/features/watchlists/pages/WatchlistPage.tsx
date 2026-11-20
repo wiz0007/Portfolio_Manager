@@ -147,7 +147,7 @@ export const WatchlistPage: React.FC = () => {
         <div className="rounded-2xl border border-theme-border bg-theme-surface p-4 shadow-sm">
           <div className="flex items-center gap-1.5 text-xs font-medium text-theme-text-muted uppercase">
             <BellRing className="h-3.5 w-3.5 text-theme-primary" />
-            <span>Target Alerts</span>
+            <span>Configured Price Targets</span>
           </div>
           <div className="text-2xl font-bold text-theme-primary mt-1">{summaryMetrics.alerts}</div>
         </div>

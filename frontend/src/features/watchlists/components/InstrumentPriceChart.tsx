@@ -21,14 +21,34 @@ export const InstrumentPriceChart: React.FC<InstrumentPriceChartProps> = ({
 
   const { data: historyData, isLoading, isError } = useInstrumentHistory(instrumentId, selectedPeriod);
 
-  const points = historyData?.points || [];
+  const rawPoints = historyData?.points || [];
+  // Guarantee chronological ascending order
+  const points = [...rawPoints].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   const isSupported = historyData?.supported ?? true;
 
-  // Compute metrics
+  const isIndex =
+    symbol.toUpperCase().startsWith('NIFTY') ||
+    symbol.toUpperCase().startsWith('SENSEX') ||
+    symbol.toUpperCase() === 'BANKNIFTY' ||
+    historyData?.unit === 'POINTS';
+
+  const unitPrefix = isIndex ? '' : (historyData?.currency ? (historyData.currency === 'INR' ? currency : `${historyData.currency} `) : currency);
+  const unitSuffix = isIndex ? ' pts' : '';
+
+  // Compute true OHLC metrics from actual point data
   const prices = points.map((p) => parseFloat(p.price)).filter((n) => !isNaN(n));
-  const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
-  const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
-  const firstPrice = prices.length > 0 ? prices[0] : 0;
+  const highCandidates = points
+    .map((p) => (p.high_price ? parseFloat(p.high_price) : parseFloat(p.price)))
+    .filter((n) => !isNaN(n));
+  const lowCandidates = points
+    .map((p) => (p.low_price ? parseFloat(p.low_price) : parseFloat(p.price)))
+    .filter((n) => !isNaN(n) && n > 0);
+
+  const minPrice = lowCandidates.length > 0 ? Math.min(...lowCandidates) : 0;
+  const maxPrice = highCandidates.length > 0 ? Math.max(...highCandidates) : 0;
+  const firstPrice = points.length > 0
+    ? (points[0].open_price ? parseFloat(points[0].open_price) : parseFloat(points[0].price))
+    : 0;
   const lastPrice = prices.length > 0 ? prices[prices.length - 1] : 0;
   const priceRange = maxPrice - minPrice;
   const netChange = lastPrice - firstPrice;
@@ -66,7 +86,12 @@ export const InstrumentPriceChart: React.FC<InstrumentPriceChartProps> = ({
               <TrendingUp className="h-4 w-4 text-theme-primary" />
               {symbol} Historical Price Movement
             </h3>
-            {historyData?.currency && (
+            {historyData?.trust_class && (
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase">
+                {historyData.trust_class.replace(/_/g, ' ')}
+              </span>
+            )}
+            {historyData?.currency && !isIndex && (
               <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-theme-bg text-theme-text-muted border border-theme-border uppercase">
                 {historyData.currency}
               </span>
@@ -104,26 +129,26 @@ export const InstrumentPriceChart: React.FC<InstrumentPriceChartProps> = ({
           <div>
             <div className="text-[10px] text-theme-text-muted uppercase font-medium">Period Open</div>
             <div className="font-semibold text-theme-text">
-              {currency}{firstPrice.toFixed(2)}
+              {unitPrefix}{firstPrice.toFixed(2)}{unitSuffix}
             </div>
           </div>
           <div>
             <div className="text-[10px] text-theme-text-muted uppercase font-medium">Period High</div>
             <div className="font-semibold text-emerald-400">
-              {currency}{maxPrice.toFixed(2)}
+              {unitPrefix}{maxPrice.toFixed(2)}{unitSuffix}
             </div>
           </div>
           <div>
             <div className="text-[10px] text-theme-text-muted uppercase font-medium">Period Low</div>
             <div className="font-semibold text-rose-400">
-              {currency}{minPrice.toFixed(2)}
+              {unitPrefix}{minPrice.toFixed(2)}{unitSuffix}
             </div>
           </div>
           <div>
             <div className="text-[10px] text-theme-text-muted uppercase font-medium">Period Change</div>
             <div className={`font-semibold ${netChange >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
               {netChange >= 0 ? '+' : ''}
-              {netChangePercent.toFixed(2)}% ({netChange >= 0 ? '+' : ''}{currency}{netChange.toFixed(2)})
+              {netChangePercent.toFixed(2)}% ({netChange >= 0 ? '+' : ''}{unitPrefix}{netChange.toFixed(2)}{unitSuffix})
             </div>
           </div>
         </div>
@@ -151,6 +176,15 @@ export const InstrumentPriceChart: React.FC<InstrumentPriceChartProps> = ({
           <div className="flex flex-col items-center justify-center gap-2 text-theme-text-muted text-xs p-6 text-center">
             <Info className="h-6 w-6" />
             <span>No price observations recorded for period {selectedPeriod}.</span>
+          </div>
+        ) : points.length === 1 ? (
+          <div className="flex flex-col items-center justify-center gap-2 text-theme-text-muted text-xs p-6 text-center">
+            <Info className="h-6 w-6 text-theme-primary" />
+            <span className="font-semibold text-theme-text">Single Observation Recorded</span>
+            <span className="max-w-xs">
+              Latest observation on {points[0].date}: {unitPrefix}{prices[0].toFixed(2)}{unitSuffix}.
+              Full multi-year historical timeseries backfill is in progress.
+            </span>
           </div>
         ) : (
           <svg

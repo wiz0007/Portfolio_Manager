@@ -279,7 +279,7 @@ class InvestmentCreateSerializer(serializers.ModelSerializer):
                 investment.current_value = cur_bal
 
             elif category == 'fixed_income':
-                if asset_type in ('bond_holding', 'corporate_bond', 'sovereign_bond', 'bond'):
+                if asset_type in ('bond_holding', 'corporate_bond', 'sovereign_bond', 'bond', 'government_bond'):
                     face_val = Decimal(str(details_data.get('face_value', 1000)))
                     p_price = Decimal(str(details_data.get('purchase_price', face_val)))
                     qty = Decimal(str(details_data.get('quantity', 1)))
@@ -439,23 +439,30 @@ class InvestmentCreateSerializer(serializers.ModelSerializer):
                     investment.current_value = base_cost
 
             elif category == 'real_estate':
+                units_val = details_data.get('units') or details_data.get('quantity')
+                area_val = (
+                    units_val
+                    if asset_type == 'reit' and units_val is not None
+                    else (details_data.get('area_value') or details_data.get('land_area') or details_data.get('built_up_area') or details_data.get('area'))
+                )
                 p_price = Decimal(str(details_data.get('purchase_price', 0)))
                 acq_date = details_data.get('acquisition_date') or details_data.get('purchase_date') or timezone.now().date()
                 stamp = Decimal(str(details_data.get('stamp_duty_paid', details_data.get('stamp_duty', 0))))
                 reg = Decimal(str(details_data.get('registration_charges', details_data.get('registration_fee_paid', 0))))
                 other_costs = Decimal(str(details_data.get('other_acquisition_costs', 0)))
                 pct = Decimal(str(details_data.get('ownership_percentage', 100)))
-                area_val = details_data.get('area_value') or details_data.get('land_area') or details_data.get('built_up_area')
                 est_val = details_data.get('estimated_current_value')
                 renovation = Decimal(str(details_data.get('renovation_expenses', 0)))
                 rental = Decimal(str(details_data.get('monthly_rental_income', 0)))
                 appreciation = details_data.get('expected_annual_appreciation')
                 apprec_dec = Decimal(str(appreciation)) if appreciation is not None else None
 
+                prop_type_default = 'REIT' if asset_type == 'reit' else ('LAND' if asset_type == 'land_plot' else 'RESIDENTIAL')
+                area_unit_default = 'UNITS' if asset_type == 'reit' else ('ACRE' if asset_type == 'land_plot' else 'SQ_FT')
                 RealEstateDetail.objects.create(
                     investment=investment,
                     property_name=details_data.get('property_nickname', details_data.get('property_name', display_name)),
-                    property_type=details_data.get('property_type', 'LAND' if asset_type == 'land_plot' else 'RESIDENTIAL'),
+                    property_type=details_data.get('property_type', prop_type_default),
                     land_classification=details_data.get('land_classification', ''),
                     property_use=details_data.get('property_use', ''),
                     country=details_data.get('country', 'India'),
@@ -468,7 +475,7 @@ class InvestmentCreateSerializer(serializers.ModelSerializer):
                     survey_or_plot_number=details_data.get('khasra_number', details_data.get('survey_or_plot_number', '')),
                     address_line=details_data.get('address_line', ''),
                     area=Decimal(str(area_val)) if area_val is not None else None,
-                    area_unit=details_data.get('area_unit', 'ACRE' if asset_type == 'land_plot' else 'SQ_FT'),
+                    area_unit=details_data.get('area_unit', area_unit_default),
                     ownership_percentage=pct,
                     purchase_price=p_price,
                     acquisition_date=acq_date,

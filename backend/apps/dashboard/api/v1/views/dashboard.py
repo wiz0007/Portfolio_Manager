@@ -173,6 +173,8 @@ class HoldingsOverviewView(APIView):
         category = request.query_params.get('category')
         sort_by = request.query_params.get('sort_by', 'current_value')
         order = request.query_params.get('order', 'desc')
+        is_active_param = request.query_params.get('is_active')
+        is_active = is_active_param.lower() in ('true', '1') if is_active_param is not None else True
 
         try:
             limit = int(request.query_params.get('limit', 20))
@@ -189,6 +191,7 @@ class HoldingsOverviewView(APIView):
                 request.user,
                 portfolio_id=portfolio_id,
                 category=category,
+                is_active=is_active,
                 sort_by=sort_by,
                 order=order,
                 limit=limit,

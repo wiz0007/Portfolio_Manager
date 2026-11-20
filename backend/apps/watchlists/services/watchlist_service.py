@@ -4,10 +4,11 @@ from typing import Any, Dict, List, Optional
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.db import IntegrityError, transaction
 
 from apps.market_data.models.instrument import Instrument, InstrumentStatus
 from apps.market_data.services.movement_service import PriceMovementService
-from apps.market_data.services.price_resolver import PriceResolver
+from apps.market_data.services.price_resolver import PriceResolver, ResolvedPrice
 from apps.watchlists.models import WatchlistItem
 
 User = get_user_model()
@@ -39,20 +40,21 @@ class WatchlistService:
                 f"Instrument {instrument.symbol} is inactive or unapproved and cannot be watched."
             )
 
-        if WatchlistItem.objects.filter(user=user, instrument=instrument).exists():
-            raise ValidationError("Instrument is already in your watchlist.")
-
         if target_price is not None and target_price <= Decimal('0'):
             raise ValidationError({'target_price': 'Target price must be strictly positive.'})
 
-        item = WatchlistItem(
-            user=user,
-            instrument=instrument,
-            notes=notes or '',
-            target_price=target_price,
-        )
-        item.save()
-        return item
+        try:
+            with transaction.atomic():
+                item, created = WatchlistItem.objects.get_or_create(
+                    user=user,
+                    instrument=instrument,
+                    defaults={'notes': notes or '', 'target_price': target_price},
+                )
+                if not created:
+                    raise ValidationError("Instrument is already in your watchlist.")
+                return item
+        except IntegrityError:
+            raise ValidationError("Instrument is already in your watchlist.")
 
     @classmethod
     def remove_item(cls, user: Any, item_id: uuid.UUID | str) -> bool:
@@ -65,9 +67,15 @@ class WatchlistService:
         return True
 
     @classmethod
-    def get_annotated_item_data(cls, item: WatchlistItem) -> Dict[str, Any]:
+    def get_annotated_item_data(
+        cls,
+        item: WatchlistItem,
+        resolved: Optional[ResolvedPrice] = None,
+    ) -> Dict[str, Any]:
         inst = item.instrument
-        resolved = PriceResolver.resolve_price(inst)
+        if resolved is None:
+            resolved = PriceResolver.resolve_price(inst)
+
         movement = PriceMovementService.calculate_movement(
             instrument=inst,
             current_price=resolved.price,
@@ -100,9 +108,12 @@ class WatchlistService:
             'updated_at': item.updated_at.isoformat(),
             'market_data': {
                 'price': str(resolved.price) if resolved.price is not None else None,
+                'price_type': resolved.price_type,
                 'currency': resolved.currency,
                 'unit': resolved.unit,
                 'effective_at': resolved.effective_at.isoformat() if resolved.effective_at else None,
+                'published_at': resolved.published_at.isoformat() if resolved.published_at else None,
+                'age_seconds': resolved.age_seconds,
                 'status': resolved.status,
                 'source': resolved.source,
                 'source_reference': resolved.source_reference,
@@ -121,19 +132,26 @@ class WatchlistService:
 
     @classmethod
     def list_items(cls, user: Any) -> List[Dict[str, Any]]:
-        items = (
+        items = list(
             WatchlistItem.objects.filter(user=user)
-            .select_related('instrument', 'instrument__reference_data', 'instrument__coverage')
+            .select_related('instrument', 'instrument__reference_data')
             .order_by('-created_at')
         )
-        return [cls.get_annotated_item_data(item) for item in items]
+        if not items:
+            return []
+
+        # Bulk resolve market prices for all watched instruments
+        instruments = [item.instrument for item in items]
+        price_map = PriceResolver.resolve_prices_bulk(instruments)
+
+        return [cls.get_annotated_item_data(item, resolved=price_map.get(item.instrument.id)) for item in items]
 
     @classmethod
     def get_item(cls, user: Any, item_id: uuid.UUID | str) -> Dict[str, Any]:
         try:
             item = (
                 WatchlistItem.objects.filter(user=user, pk=item_id)
-                .select_related('instrument', 'instrument__reference_data', 'instrument__coverage')
+                .select_related('instrument', 'instrument__reference_data')
                 .get()
             )
         except (WatchlistItem.DoesNotExist, ValueError):

@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Optional
 
 from apps.assets.models.investment import Investment
-from apps.market_data.services.market_data_service import MarketDataService
+from apps.market_data.services.price_resolver import PriceResolver, ResolutionStatus
 from apps.valuation.services.asset_valuation.base import (
     BaseAssetValuationStrategy,
     ValuationResult,
@@ -90,30 +90,53 @@ class GoldValuationStrategy(BaseAssetValuationStrategy):
         source_name = 'USER_INPUT'
         source_ref = ''
         is_synthetic = False
+        val_status = ValuationStatus.SUCCESS
 
+        # 1. Check instrument link via canonical PriceResolver
         if investment.instrument:
             try:
-                quote = MarketDataService.get_latest_quote(investment.instrument)
-                if quote and quote.price is not None:
-                    rate_24k = quote.price
-                    source_name = quote.provider or 'MARKET_FEED'
-                    source_ref = investment.instrument.symbol
-                    is_synthetic = quote.is_synthetic
-                    if quote.timestamp:
-                        obs_dt = quote.timestamp
+                resolved = PriceResolver.resolve_price(investment.instrument, as_of=obs_dt)
+                if resolved.price is not None and resolved.status in (
+                    ResolutionStatus.AVAILABLE,
+                    ResolutionStatus.STALE,
+                    ResolutionStatus.SYNTHETIC,
+                ):
+                    rate_24k = resolved.price
+                    source_name = resolved.source or 'MANUAL_VERIFIED'
+                    source_ref = resolved.source_reference or investment.instrument.symbol
+                    is_synthetic = resolved.is_synthetic
+                    if resolved.effective_at:
+                        obs_dt = resolved.effective_at
+                    if resolved.status == ResolutionStatus.STALE:
+                        val_status = ValuationStatus.STALE_DATA
             except Exception:
                 pass
 
+            if rate_24k is None:
+                latest_quote = investment.instrument.latest_quote
+                if latest_quote and latest_quote.price:
+                    rate_24k = latest_quote.price
+                    source_name = latest_quote.provider or 'MARKET_DATA'
+                    source_ref = investment.instrument.symbol
+                    is_synthetic = latest_quote.is_synthetic
+                    obs_dt = latest_quote.timestamp
+
         if rate_24k is None:
-            raw_p = details.get('current_price_per_gram') or details.get('purchase_price_per_gram')
+            raw_p = details.get('current_price_per_gram') or details.get('user_estimate')
             if raw_p is not None:
                 rate_24k = to_decimal(raw_p)
-                source_name = 'USER_INPUT'
+                source_name = 'USER_ESTIMATE'
+                val_status = ValuationStatus.ESTIMATED
+            elif details.get('purchase_price_per_gram'):
+                rate_24k = to_decimal(details['purchase_price_per_gram'])
+                source_name = 'PURCHASE_PRICE_FALLBACK'
+                val_status = ValuationStatus.ESTIMATED
             else:
                 raw_total = details.get('purchase_price')
                 if raw_total is not None and fine_grams > 0:
                     rate_24k = to_decimal(raw_total) / fine_grams
                     source_name = 'ACQUISITION_AVERAGE'
+                    val_status = ValuationStatus.ESTIMATED
                 else:
                     return ValuationResult(
                         current_value=None,
@@ -135,7 +158,7 @@ class GoldValuationStrategy(BaseAssetValuationStrategy):
             observed_at=obs_dt,
             is_synthetic=is_synthetic,
             currency=investment.currency,
-            status=ValuationStatus.SUCCESS,
+            status=val_status,
             metadata={
                 'gross_weight_grams': str(grams),
                 'purity_karats': str(purity_karats),

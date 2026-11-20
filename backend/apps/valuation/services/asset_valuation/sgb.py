@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Optional
 
 from apps.assets.models.investment import Investment
-from apps.market_data.services.market_data_service import MarketDataService
+from apps.market_data.services.price_resolver import PriceResolver, ResolutionStatus
 from apps.valuation.services.asset_valuation.base import (
     BaseAssetValuationStrategy,
     ValuationResult,
@@ -65,17 +65,25 @@ class SovereignGoldBondValuationStrategy(BaseAssetValuationStrategy):
         source_name = 'USER_INPUT'
         source_ref = details.get('sgb_series', '')
         is_synthetic = False
+        val_status = ValuationStatus.SUCCESS
 
+        # 1. Check instrument link via canonical PriceResolver
         if investment.instrument:
             try:
-                quote = MarketDataService.get_latest_quote(investment.instrument)
-                if quote and quote.price:
-                    unit_price = quote.price
-                    source_name = quote.provider or 'MARKET_FEED'
-                    source_ref = investment.instrument.symbol
-                    is_synthetic = quote.is_synthetic
-                    if quote.timestamp:
-                        obs_dt = quote.timestamp
+                resolved = PriceResolver.resolve_price(investment.instrument, as_of=obs_dt)
+                if resolved.price is not None and resolved.status in (
+                    ResolutionStatus.AVAILABLE,
+                    ResolutionStatus.STALE,
+                    ResolutionStatus.SYNTHETIC,
+                ):
+                    unit_price = resolved.price
+                    source_name = resolved.source or 'MANUAL_VERIFIED'
+                    source_ref = resolved.source_reference or investment.instrument.symbol
+                    is_synthetic = resolved.is_synthetic
+                    if resolved.effective_at:
+                        obs_dt = resolved.effective_at
+                    if resolved.status == ResolutionStatus.STALE:
+                        val_status = ValuationStatus.STALE_DATA
             except Exception:
                 pass
 
@@ -83,10 +91,16 @@ class SovereignGoldBondValuationStrategy(BaseAssetValuationStrategy):
             raw_p = details.get('current_price') or details.get('purchase_price_per_gram')
             if raw_p is not None:
                 unit_price = to_decimal(raw_p)
+                source_name = 'USER_INPUT'
+                val_status = ValuationStatus.SUCCESS
             elif details.get('purchase_price'):
                 unit_price = to_decimal(details['purchase_price']) / units
+                source_name = 'PURCHASE_PRICE'
+                val_status = ValuationStatus.SUCCESS
             else:
                 unit_price = investment.invested_amount / units if units > 0 else Decimal('0.00')
+                source_name = 'PURCHASE_PRICE'
+                val_status = ValuationStatus.SUCCESS
 
         unit_price = to_decimal(unit_price)
         base_value = units * unit_price
@@ -120,7 +134,7 @@ class SovereignGoldBondValuationStrategy(BaseAssetValuationStrategy):
             observed_at=obs_dt,
             is_synthetic=is_synthetic,
             currency=investment.currency,
-            status=ValuationStatus.SUCCESS,
+            status=val_status,
             metadata={
                 'units': str(units),
                 'unit_price': str(unit_price),

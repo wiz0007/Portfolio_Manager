@@ -79,6 +79,11 @@ class InvestmentTransaction(models.Model):
     def save(self, *args, **kwargs):
         from decimal import Decimal
 
+        from django.core.exceptions import ValidationError
+
+        if not self._state.adding and self.pk:
+            raise ValidationError("Existing investment transaction records are immutable and cannot be modified.")
+
         if self.gross_amount is None:
             self.gross_amount = self.amount or Decimal('0')
         if self.amount is None:
@@ -94,6 +99,10 @@ class InvestmentTransaction(models.Model):
             else:
                 self.net_cash_flow = gross
         super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        raise ValidationError("Investment transactions cannot be deleted. Use a reversal or adjustment transaction.")
 
     def __str__(self) -> str:
         return f"{self.transaction_type} {self.currency} {self.amount} for {self.investment.display_name}"

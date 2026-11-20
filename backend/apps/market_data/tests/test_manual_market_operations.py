@@ -264,6 +264,10 @@ class TestObservationLifecycleAndImport:
         client = APIClient()
         client.force_authenticate(user=staff_operator)
 
+        # 0. Submit observation for review (Draft -> Pending Review)
+        res_sub = client.post(f'/api/v1/market-data/observations/{obs.id}/submit-for-review/')
+        assert res_sub.status_code == status.HTTP_200_OK
+
         # 1. Publish observation
         res_pub = client.post(f'/api/v1/market-data/observations/{obs.id}/publish/')
         assert res_pub.status_code == status.HTTP_200_OK
@@ -424,6 +428,10 @@ class TestPriceResolverAndSharedValuationRefresh:
 
         client = APIClient()
         client.force_authenticate(user=staff_operator)
+
+        # Submit observation for review (Draft -> Pending Review)
+        res_sub = client.post(f'/api/v1/market-data/observations/{obs.id}/submit-for-review/')
+        assert res_sub.status_code == status.HTTP_200_OK
 
         # Publish observation
         res = client.post(f'/api/v1/market-data/observations/{obs.id}/publish/')

@@ -12,7 +12,6 @@ from apps.market_data.models.coverage import (
     CoverageStatus,
     InstrumentCoverage,
 )
-from apps.market_data.models.instrument import InstrumentStatus
 from apps.market_data.models.observation import ObservationStatus, PriceObservation
 from apps.market_data.models.worklist import (
     DueReason,
@@ -35,28 +34,43 @@ def sanitize_csv_cell(value: str) -> str:
     return s
 
 
+# Official Indian Exchange (NSE/BSE) Market Holidays (Standard Annual Calendar)
+INDIAN_MARKET_HOLIDAYS_MMDD = {
+    (1, 26),   # Republic Day
+    (5, 1),    # Maharashtra Day / Labour Day
+    (8, 15),   # Independence Day
+    (10, 2),   # Mahatma Gandhi Jayanti
+    (12, 25),  # Christmas
+}
+
+
 class MarketDataWorklistService:
     """
     Deterministic daily worklist generation, management, and export service.
+    Atomic on secondary database ('market_data'), holiday-aware, and strictly idempotent.
     """
 
     @classmethod
     def is_trading_day(cls, target_date: date) -> bool:
-        """Indian equity market calendar check (Mon-Fri, excluding major holidays)."""
+        """Indian equity market calendar check (Mon-Fri, excluding official exchange holidays)."""
         # Saturday is 5, Sunday is 6
-        return target_date.weekday() < 5
+        if target_date.weekday() >= 5:
+            return False
+        if (target_date.month, target_date.day) in INDIAN_MARKET_HOLIDAYS_MMDD:
+            return False
+        return True
 
     @classmethod
-    @transaction.atomic
+    @transaction.atomic(using='market_data')
     def generate_worklist(cls, target_date: Optional[date] = None) -> MarketDataWorklist:
         """
         Generates or updates the daily collection worklist for the target calendar date.
-        Idempotent: Re-running for the same date updates/preserves existing items.
+        Strictly idempotent: Preserves completed and skipped operational work on reruns.
         """
         target_date = target_date or dj_timezone.now().date()
         is_market_open = cls.is_trading_day(target_date)
 
-        worklist, _created = MarketDataWorklist.objects.get_or_create(
+        worklist, _created = MarketDataWorklist.objects.using('market_data').get_or_create(
             worklist_date=target_date,
             defaults={
                 'status': WorklistStatus.GENERATED,
@@ -64,10 +78,9 @@ class MarketDataWorklistService:
             },
         )
 
-        active_coverages = InstrumentCoverage.objects.filter(
+        active_coverages = InstrumentCoverage.objects.using('market_data').filter(
             status=CoverageStatus.ACTIVE,
-            instrument__status=InstrumentStatus.ACTIVE,
-        ).select_related('instrument')
+        )
 
         items_created = 0
 
@@ -113,20 +126,29 @@ class MarketDataWorklistService:
             if not due_reason:
                 continue
 
+            existing_item = MarketDataWorklistItem.objects.using('market_data').filter(
+                worklist=worklist,
+                instrument_id=inst.id if inst else cov.instrument_id,
+            ).first()
+
+            if existing_item and existing_item.status == WorklistItemStatus.COMPLETED:
+                # Strictly preserve completed operational work (ERD Section 13.1)
+                continue
+
             last_price = latest_published.value if latest_published else None
             last_dt = latest_published.effective_at if latest_published else None
 
-            _item, item_created = MarketDataWorklistItem.objects.update_or_create(
+            _item, item_created = MarketDataWorklistItem.objects.using('market_data').update_or_create(
                 worklist=worklist,
                 instrument=inst,
                 defaults={
                     'coverage': cov,
-                    'canonical_name': inst.name,
-                    'symbol': inst.symbol,
-                    'exchange': inst.exchange or '',
-                    'isin': inst.isin,
-                    'asset_class': inst.asset_class,
-                    'product_type': inst.product_type,
+                    'canonical_name': inst.name if inst else cov.symbol,
+                    'symbol': inst.symbol if inst else cov.symbol,
+                    'exchange': (inst.exchange or '') if inst else '',
+                    'isin': inst.isin if inst else None,
+                    'asset_class': inst.asset_class if inst else 'EQUITY',
+                    'product_type': inst.product_type if inst else '',
                     'expected_price_type': cov.price_type,
                     'currency': cov.currency,
                     'unit': cov.unit,
@@ -146,9 +168,9 @@ class MarketDataWorklistService:
             if item_created:
                 items_created += 1
 
-        worklist.total_items = worklist.items.count()
-        worklist.completed_items = worklist.items.filter(status=WorklistItemStatus.COMPLETED).count()
-        worklist.save()
+        worklist.total_items = worklist.items.using('market_data').count()
+        worklist.completed_items = worklist.items.using('market_data').filter(status=WorklistItemStatus.COMPLETED).count()
+        worklist.save(using='market_data')
 
         return worklist
 

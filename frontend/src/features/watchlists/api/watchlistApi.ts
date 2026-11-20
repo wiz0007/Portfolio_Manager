@@ -31,14 +31,24 @@ export const watchlistApi = {
   getInstrumentHistory: (
     instrumentId: string,
     period: string = '1M',
-    options?: { from?: string; to?: string; interval?: string }
+    options?: {
+      from?: string;
+      to?: string;
+      interval?: string;
+      series_id?: string;
+      price_type?: string;
+      signal?: AbortSignal;
+    }
   ): Promise<InstrumentHistoryResponse> => {
     const params = new URLSearchParams({ period });
     if (options?.from) params.append('from', options.from);
     if (options?.to) params.append('to', options.to);
     if (options?.interval) params.append('interval', options.interval);
+    if (options?.series_id) params.append('series_id', options.series_id);
+    if (options?.price_type) params.append('price_type', options.price_type);
     return apiClient.get<InstrumentHistoryResponse>(
-      `/instruments/${instrumentId}/market-data/history/?${params.toString()}`
+      `/instruments/${instrumentId}/market-data/history/?${params.toString()}`,
+      { signal: options?.signal }
     );
   },
 

@@ -54,6 +54,10 @@ class Instrument(models.Model):
         db_index=True,
     )
     is_active = models.BooleanField(default=True, db_index=True)
+    identity_version = models.PositiveIntegerField(
+        default=1,
+        help_text='Monotonically increasing identity version for secondary projection sync.',
+    )
     metadata = models.JSONField(default=dict, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -78,7 +82,20 @@ class Instrument(models.Model):
             self.is_active = False
         else:
             self.is_active = True
+
+        is_new = self._state.adding
+        if not is_new and self.pk:
+            # Monotonically increment identity version on update
+            self.identity_version = (self.identity_version or 0) + 1
+
         super().save(*args, **kwargs)
+
+        # Durable outbox record on Primary Database ('default')
+        try:
+            from apps.market_data.services.sync_service import InstrumentIdentitySyncService
+            InstrumentIdentitySyncService.record_sync_event(self)
+        except Exception:
+            pass
 
     def __str__(self) -> str:
         exchange_str = f" ({self.exchange})" if self.exchange else ""
@@ -88,3 +105,28 @@ class Instrument(models.Model):
     def latest_quote(self) -> Optional['MarketDataPoint']:
         """Returns the most recent market data point for this instrument."""
         return self.data_points.order_by('-timestamp').first()
+
+    @property
+    def coverage(self):
+        """Cross-database property resolving coverage policy from secondary DB."""
+        if hasattr(self, '_cached_coverage') and self._cached_coverage is not None:
+            return self._cached_coverage
+        from apps.market_data.models.coverage import InstrumentCoverage
+        self._cached_coverage = InstrumentCoverage.objects.using('market_data').filter(instrument_id=self.id).first()
+        return self._cached_coverage
+
+    @coverage.setter
+    def coverage(self, value):
+        self._cached_coverage = value
+
+    @property
+    def observations(self):
+        """Cross-database property resolving observations from secondary DB."""
+        from apps.market_data.models.observation import PriceObservation
+        return PriceObservation.objects.using('market_data').filter(instrument_id=self.id)
+
+    @property
+    def worklist_items(self):
+        """Cross-database property resolving worklist items from secondary DB."""
+        from apps.market_data.models.worklist import MarketDataWorklistItem
+        return MarketDataWorklistItem.objects.using('market_data').filter(instrument_id=self.id)

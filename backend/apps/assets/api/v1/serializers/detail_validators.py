@@ -303,6 +303,8 @@ class DepositDetailUpdateValidator(serializers.ModelSerializer):
 
 class BondDetailCreateValidator(serializers.ModelSerializer):
     bond_name = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    issuer = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    issuer_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
     face_value = serializers.DecimalField(
         max_digits=18, decimal_places=4, min_value=Decimal('0.0001'), required=True
     )
@@ -324,6 +326,10 @@ class BondDetailCreateValidator(serializers.ModelSerializer):
 
     def validate(self, attrs):
         check_no_immutable_fields(self.initial_data, is_creation=True)
+        if 'issuer' in attrs and not attrs.get('issuer_name'):
+            attrs['issuer_name'] = attrs['issuer']
+        if not attrs.get('issuer_name'):
+            raise serializers.ValidationError({'issuer_name': "Issuer name is required."})
         if not attrs.get('purchase_date'):
             attrs['purchase_date'] = timezone.now().date()
         if attrs.get('purchase_date') and attrs.get('maturity_date'):
@@ -686,6 +692,14 @@ class RealEstateDetailCreateValidator(serializers.ModelSerializer):
     )
     property_name = serializers.CharField(max_length=200, required=False, allow_blank=True)
     property_type = serializers.CharField(max_length=50, default='RESIDENTIAL')
+
+    # REIT and Quantity Aliases
+    units = serializers.DecimalField(
+        max_digits=18, decimal_places=4, min_value=Decimal('0.0001'), required=False
+    )
+    quantity = serializers.DecimalField(
+        max_digits=18, decimal_places=4, min_value=Decimal('0.0001'), required=False
+    )
 
     # Aliases
     property_nickname = serializers.CharField(max_length=200, required=False, allow_blank=True)

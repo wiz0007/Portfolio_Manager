@@ -111,6 +111,11 @@ class MarketDataService:
             return existing
 
         if len(existing) < 5:
+            # Strictly prevent generating synthetic demo points for real non-synthetic instruments
+            is_testing = getattr(settings, 'TESTING', False)
+            if not is_testing and getattr(provider, 'provider_name', '') == 'DEMO' and not getattr(instrument, 'is_synthetic', False):
+                return existing
+
             points = provider.get_history(instrument, start_date, end_date, interval)
 
             with transaction.atomic():

@@ -52,6 +52,7 @@ class InstrumentRequestSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
+        validators = []
         read_only_fields = [
             'id',
             'status',
@@ -129,6 +130,7 @@ class InstrumentRequestRejectSerializer(serializers.Serializer):
 # --- Instrument Coverage Serializers ---
 
 class InstrumentCoverageSerializer(serializers.ModelSerializer):
+    instrument = serializers.UUIDField(source='instrument_id')
     symbol = serializers.CharField(source='instrument.symbol', read_only=True)
     canonical_name = serializers.CharField(source='instrument.name', read_only=True)
     asset_class = serializers.CharField(source='instrument.asset_class', read_only=True)
@@ -157,15 +159,19 @@ class InstrumentCoverageSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
+        validators = []
         read_only_fields = ['id', 'last_attempt_at', 'last_published_at', 'created_at', 'updated_at']
 
 
 # --- Price Observation Serializers ---
 
 class PriceObservationSerializer(serializers.ModelSerializer):
+    instrument = serializers.UUIDField(source='instrument_id')
     symbol = serializers.CharField(source='instrument.symbol', read_only=True)
     instrument_name = serializers.CharField(source='instrument.name', read_only=True)
+    recorded_by = serializers.UUIDField(source='recorded_by_id', read_only=True)
     recorded_by_email = serializers.CharField(source='recorded_by.email', read_only=True)
+    published_by = serializers.UUIDField(source='published_by_id', read_only=True)
     published_by_email = serializers.CharField(source='published_by.email', read_only=True)
 
     class Meta:
@@ -196,6 +202,7 @@ class PriceObservationSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
+        validators = []
         read_only_fields = [
             'id',
             'status',
@@ -218,7 +225,7 @@ class PriceObservationSerializer(serializers.ModelSerializer):
         return effective_at
 
     def create(self, validated_data):
-        validated_data['recorded_by'] = self.context['request'].user
+        validated_data['recorded_by_id'] = getattr(self.context['request'].user, 'id', None)
         validated_data['status'] = ObservationStatus.DRAFT
         return super().create(validated_data)
 
@@ -235,6 +242,8 @@ class PriceObservationCorrectionSerializer(serializers.Serializer):
 # --- Worklist Serializers ---
 
 class MarketDataWorklistItemSerializer(serializers.ModelSerializer):
+    instrument = serializers.UUIDField(source='instrument_id', read_only=True)
+
     class Meta:
         model = MarketDataWorklistItem
         fields = [

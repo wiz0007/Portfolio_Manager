@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List
 
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone as dj_timezone
 
@@ -25,9 +26,10 @@ def clean_cell(val: Any) -> str:
     if val is None:
         return ''
     s = str(val).strip()
-    # Strip dangerous spreadsheet formula prefixes
-    if s.startswith(('=', '+', '-', '@', '\t', '\r')):
-        s = s.lstrip('=+-@\t\r').strip()
+    # Strip dangerous spreadsheet formula prefixes (=, @, \t, \r)
+    # Never strip '-' or '+' as they are essential for numbers and normal text
+    if s.startswith(('=', '@', '\t', '\r')):
+        s = s.lstrip('=@\t\r').strip()
     return s
 
 
@@ -161,7 +163,19 @@ class PriceImportService:
                     'notes': clean_cell(raw_row.get('notes')),
                 })
 
+        batch = PriceImportBatch.objects.create(
+            user=user,
+            filename=filename,
+            schema_version='1.0',
+            total_rows=total_rows,
+            valid_rows=len(valid_rows),
+            error_rows=len(errors),
+            status=ImportBatchStatus.PREVIEWED if len(valid_rows) > 0 else ImportBatchStatus.FAILED,
+            metadata={'valid_rows': valid_rows, 'errors': errors},
+        )
+
         return {
+            'batch_id': str(batch.id),
             'filename': filename,
             'total_rows': total_rows,
             'valid_count': len(valid_rows),
@@ -171,23 +185,29 @@ class PriceImportService:
         }
 
     @classmethod
-    @transaction.atomic
-    def commit_import(cls, user, preview_result: Dict[str, Any]) -> PriceImportBatch:
+    @transaction.atomic(using='market_data')
+    def commit_batch(cls, user, batch_id: Any) -> PriceImportBatch:
         """
-        Persists validated rows as draft PriceObservations and logs batch audit history.
+        Commits a server-side validated preview batch without trusting client-supplied parsed rows.
         """
-        batch = PriceImportBatch.objects.create(
-            user=user,
-            filename=preview_result.get('filename', 'import.csv'),
-            schema_version='1.0',
-            total_rows=preview_result.get('total_rows', 0),
-            valid_rows=preview_result.get('valid_count', 0),
-            error_rows=preview_result.get('error_count', 0),
-            status=ImportBatchStatus.COMMITTED if preview_result.get('valid_count', 0) > 0 else ImportBatchStatus.FAILED,
-        )
+        try:
+            batch = PriceImportBatch.objects.select_for_update().get(id=batch_id, user=user)
+        except (PriceImportBatch.DoesNotExist, ValueError):
+            raise ValidationError("Import batch not found or access denied.")
+
+        if batch.status == ImportBatchStatus.COMMITTED:
+            raise ValidationError("Import batch has already been committed.")
+
+        valid_rows = batch.metadata.get('valid_rows', [])
+        errors = batch.metadata.get('errors', [])
+
+        if not valid_rows:
+            batch.status = ImportBatchStatus.FAILED
+            batch.save(update_fields=['status', 'updated_at'])
+            raise ValidationError("Batch has no valid rows to commit.")
 
         # Log row errors for operator report download
-        for err in preview_result.get('errors', []):
+        for err in errors:
             PriceImportRowError.objects.create(
                 batch=batch,
                 row_number=err['row_number'],
@@ -197,7 +217,7 @@ class PriceImportService:
             )
 
         # Create draft PriceObservation for every valid row
-        for row in preview_result.get('valid_rows', []):
+        for row in valid_rows:
             PriceObservation.objects.create(
                 instrument_id=row['instrument_id'],
                 price_type=row['price_type'],
@@ -212,4 +232,18 @@ class PriceImportService:
                 recorded_by=user,
             )
 
+        batch.status = ImportBatchStatus.COMMITTED
+        batch.save(update_fields=['status', 'updated_at'])
         return batch
+
+    @classmethod
+    @transaction.atomic(using='market_data')
+    def commit_import(cls, user, preview_result: Dict[str, Any]) -> PriceImportBatch:
+        """
+        Persists validated rows as draft PriceObservations and logs batch audit history.
+        Strictly requires server-persisted batch_id.
+        """
+        batch_id = preview_result.get('batch_id')
+        if not batch_id:
+            raise ValidationError("Server-persisted batch_id is required. Direct client row commitment is disabled for security.")
+        return cls.commit_batch(user, batch_id)

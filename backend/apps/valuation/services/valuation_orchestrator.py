@@ -43,7 +43,9 @@ class ValuationOrchestrator:
         effective_date = (as_of or datetime.now(timezone.utc)).date()
 
         # Failed or incomplete inputs must not destroy existing current value (VAL-044)
-        if val_result.status != ValuationStatus.SUCCESS or val_result.current_value is None:
+        # Legitimate valuations with status SUCCESS, ESTIMATED, or STALE_DATA must be persisted
+        valid_statuses = (ValuationStatus.SUCCESS, ValuationStatus.ESTIMATED, ValuationStatus.STALE_DATA)
+        if val_result.status not in valid_statuses or val_result.current_value is None:
             return None
 
         # Lock investment row for update concurrency safety (VAL-043)

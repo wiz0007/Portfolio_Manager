@@ -116,8 +116,9 @@ class HoldingOverviewItemSerializer(serializers.Serializer):
     current_value = serializers.CharField(read_only=True)
     absolute_gain_loss = serializers.CharField(read_only=True)
     gain_loss_percentage = serializers.CharField(read_only=True, allow_null=True)
-    valuation_date = serializers.CharField(read_only=True)
-    valuation_source = serializers.CharField(read_only=True)
+    valuation_date = serializers.CharField(read_only=True, allow_null=True)
+    valuation_source = serializers.CharField(read_only=True, allow_null=True)
+    valuation_status = serializers.CharField(read_only=True, default='VALUED')
     price_freshness = serializers.CharField(read_only=True)
     is_stale = serializers.BooleanField(read_only=True)
 

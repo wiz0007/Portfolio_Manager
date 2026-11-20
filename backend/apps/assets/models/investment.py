@@ -99,6 +99,17 @@ class Investment(models.Model):
             models.Index(fields=['user', '-created_at'], name='inv_user_created_idx'),
         ]
 
+    def clean(self):
+        super().clean()
+        if self.portfolio_id and self.user_id:
+            if hasattr(self, 'portfolio') and self.portfolio and self.portfolio.user_id != self.user_id:
+                from django.core.exceptions import ValidationError
+                raise ValidationError({'portfolio': 'Investment portfolio must belong to the investment owner.'})
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
     def __str__(self) -> str:
         return f"{self.display_name} ({self.asset_type}) - {self.currency} {self.current_value}"
 
@@ -113,17 +124,31 @@ class Investment(models.Model):
 
     @property
     def details(self):
-        """Dynamic lookup of attached asset-specific detail model as a dictionary."""
-        for rel in (
-            'cash_detail',
-            'deposit_detail',
-            'bond_detail',
-            'equity_detail',
-            'mutual_fund_detail',
-            'gold_detail',
-            'real_estate_detail',
-            'crypto_detail',
-        ):
+        """Optimized targeted lookup of attached asset-specific detail model (ERD Section 17.4)."""
+        if hasattr(self, '_custom_details') and self._custom_details is not None:
+            return self._custom_details
+
+        # Targeted relation lookup mapped by asset_type rather than querying all 8 relations
+        asset_map = {
+            'EQUITY': 'equity_detail',
+            'MUTUAL_FUND': 'mutual_fund_detail',
+            'BOND': 'bond_detail',
+            'DEPOSIT': 'deposit_detail',
+            'REAL_ESTATE': 'real_estate_detail',
+            'GOLD': 'gold_detail',
+            'COMMODITY': 'gold_detail',
+            'CRYPTO': 'crypto_detail',
+            'CASH': 'cash_detail',
+        }
+        target_rel = asset_map.get(str(self.asset_type).upper())
+        relations_to_check = [target_rel] if target_rel else [
+            'cash_detail', 'deposit_detail', 'bond_detail', 'equity_detail',
+            'mutual_fund_detail', 'gold_detail', 'real_estate_detail', 'crypto_detail',
+        ]
+
+        for rel in relations_to_check:
+            if not rel:
+                continue
             try:
                 detail_obj = getattr(self, rel, None)
                 if detail_obj:
@@ -136,10 +161,30 @@ class Investment(models.Model):
                 pass
         return {}
 
+    @details.setter
+    def details(self, value):
+        self._custom_details = value
+
     @property
     def quantity(self):
         """Convenience property for quantity/units from attached detail record."""
         det = self.details
         if not det:
             return None
+        if det.get('property_type') == 'REIT' and det.get('area') is not None:
+            return det.get('area')
         return det.get('quantity') or det.get('units') or det.get('weight_grams')
+
+    @property
+    def purchase_price(self):
+        """Convenience property for purchase price from attached detail record."""
+        det = self.details
+        if not det:
+            return None
+        return (
+            det.get('purchase_price')
+            or det.get('average_buy_price')
+            or det.get('purchase_price_per_share')
+            or det.get('purchase_nav')
+            or det.get('average_purchase_nav')
+        )

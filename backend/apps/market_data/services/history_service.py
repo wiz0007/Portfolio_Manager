@@ -21,10 +21,13 @@ class HistoryPoint:
     unit: str
     source: str
     is_synthetic: bool = False
+    trust_class: str = 'VERIFIED_OFFICIAL'
     open_price: Optional[Decimal] = None
     high_price: Optional[Decimal] = None
     low_price: Optional[Decimal] = None
     volume: Optional[int] = None
+    price_type: str = 'LTP'
+    published_at: Optional[datetime] = None
 
 
 @dataclass
@@ -37,6 +40,7 @@ class HistoryResult:
     currency: str = 'INR'
     unit: str = 'UNITS'
     message: str = ''
+    trust_class: str = 'VERIFIED_OFFICIAL'
 
 
 PERIOD_DAYS_MAP = {
@@ -73,6 +77,34 @@ class MarketHistoryService:
         if start_date or end_date:
             resolved_end = end_date or today
             resolved_start = start_date or (resolved_end - timedelta(days=30))
+        elif period_upper == 'ALL':
+            resolved_end = today
+            # Dynamically determine earliest available observation date
+            earliest_obs = (
+                PriceObservation.objects.filter(
+                    instrument=instrument,
+                    status=ObservationStatus.PUBLISHED,
+                    effective_at__lte=datetime.combine(resolved_end, datetime.max.time(), tzinfo=timezone.utc),
+                )
+                .exclude(corrections__status=ObservationStatus.PUBLISHED)
+                .order_by('effective_at')
+                .first()
+            )
+            if earliest_obs:
+                resolved_start = earliest_obs.effective_at.date()
+            else:
+                earliest_mdp = (
+                    MarketDataPoint.objects.filter(
+                        instrument=instrument,
+                        timestamp__lte=datetime.combine(resolved_end, datetime.max.time(), tzinfo=timezone.utc),
+                    )
+                    .order_by('timestamp')
+                    .first()
+                )
+                if earliest_mdp:
+                    resolved_start = earliest_mdp.timestamp.date()
+                else:
+                    resolved_start = today - timedelta(days=365 * 5)
         else:
             days = PERIOD_DAYS_MAP.get(period_upper, 30)
             resolved_end = today
@@ -88,19 +120,28 @@ class MarketHistoryService:
         start_dt = datetime.combine(resolved_start, datetime.min.time(), tzinfo=timezone.utc)
         end_dt = datetime.combine(resolved_end, datetime.max.time(), tzinfo=timezone.utc)
 
-        # 1. Query verified published PriceObservation records
-        obs_qs = PriceObservation.objects.filter(
-            instrument=instrument,
-            status=ObservationStatus.PUBLISHED,
-            effective_at__gte=start_dt,
-            effective_at__lte=end_dt,
+        # 1. Query verified published PriceObservation records (excluding superseded ones)
+        obs_qs = (
+            PriceObservation.objects.filter(
+                instrument=instrument,
+                status=ObservationStatus.PUBLISHED,
+                effective_at__gte=start_dt,
+                effective_at__lte=end_dt,
+            )
+            .exclude(corrections__status=ObservationStatus.PUBLISHED)
         )
         if price_type:
             obs_qs = obs_qs.filter(price_type=price_type)
 
-        published_obs = list(obs_qs.order_by('effective_at'))
+        published_obs = list(obs_qs.order_by('effective_at', 'published_at'))
 
         if published_obs:
+            # Deduplicate strictly to 1 observation per trading date (latest published wins)
+            obs_by_date = {}
+            for obs in published_obs:
+                obs_by_date[obs.effective_at.date()] = obs
+            deduped_obs = sorted(obs_by_date.values(), key=lambda o: o.effective_at)
+
             points = [
                 HistoryPoint(
                     timestamp=obs.effective_at,
@@ -110,10 +151,18 @@ class MarketHistoryService:
                     unit=obs.unit,
                     source=obs.source,
                     is_synthetic=obs.is_synthetic,
+                    trust_class=getattr(obs, 'trust_class', 'VERIFIED_OFFICIAL'),
+                    open_price=obs.open_price,
+                    high_price=obs.high_price,
+                    low_price=obs.low_price,
+                    volume=obs.volume,
+                    price_type=obs.price_type,
+                    published_at=obs.published_at,
                 )
-                for obs in published_obs
+                for obs in deduped_obs
             ]
-            first_obs = published_obs[0]
+            first_obs = deduped_obs[0]
+            trust = getattr(first_obs, 'trust_class', 'VERIFIED_OFFICIAL')
             return HistoryResult(
                 supported=True,
                 points=points,
@@ -123,94 +172,94 @@ class MarketHistoryService:
                 currency=first_obs.currency,
                 unit=first_obs.unit,
                 message=f"Retrieved {len(points)} verified published observations.",
+                trust_class=trust,
             )
 
-        # 2. Check Provider capabilities
-        provider = provider_registry.get_provider_for_instrument(instrument)
-        if not getattr(provider.capabilities, 'historical', False):
-            return HistoryResult(
-                supported=False,
-                points=[],
-                period=period_upper,
-                start_date=resolved_start.isoformat(),
-                end_date=resolved_end.isoformat(),
-                currency=instrument.currency,
-                unit='UNITS',
-                message='Historical market observations are not supported by the provider for this instrument.',
-            )
-
-        # 3. Query or populate MarketDataPoints
+        # 2. Check non-synthetic MarketDataPoints in database
         db_points = list(
             MarketDataPoint.objects.filter(
                 instrument=instrument,
                 interval=interval,
                 timestamp__gte=start_dt,
                 timestamp__lte=end_dt,
+                is_synthetic=False,
             ).order_by('timestamp')
         )
 
-        # If data is sparse, fetch from provider
-        if len(db_points) < 2 and getattr(provider, 'get_history', None):
-            try:
-                fetched = provider.get_history(instrument, resolved_start, resolved_end, interval)
-                for p in fetched:
-                    # Ignore any future points
-                    if p.timestamp.date() > today:
-                        continue
-                    MarketDataPoint.objects.update_or_create(
-                        instrument=instrument,
-                        timestamp=p.timestamp,
-                        interval=interval,
-                        provider=provider.provider_name,
-                        defaults={
-                            'price': p.price,
-                            'open_price': p.open_price,
-                            'high_price': p.high_price,
-                            'low_price': p.low_price,
-                            'close_price': p.close_price,
-                            'volume': p.volume,
-                            'change_amount': p.change_amount,
-                            'change_percent': p.change_percent,
-                            'is_synthetic': getattr(provider, 'provider_name', '') == 'DEMO',
-                        },
-                    )
-                db_points = list(
-                    MarketDataPoint.objects.filter(
-                        instrument=instrument,
-                        interval=interval,
-                        timestamp__gte=start_dt,
-                        timestamp__lte=end_dt,
-                    ).order_by('timestamp')
+        if db_points:
+            points = [
+                HistoryPoint(
+                    timestamp=p.timestamp,
+                    date=p.timestamp.date().isoformat(),
+                    price=p.price,
+                    currency=instrument.currency,
+                    unit='UNITS',
+                    source=p.provider or 'FEED',
+                    is_synthetic=False,
+                    trust_class='VERIFIED_OFFICIAL',
+                    open_price=p.open_price,
+                    high_price=p.high_price,
+                    low_price=p.low_price,
+                    volume=p.volume,
                 )
-            except Exception:
-                # Provider fetch failure handled gracefully
-                pass
-
-        points = [
-            HistoryPoint(
-                timestamp=p.timestamp,
-                date=p.timestamp.date().isoformat(),
-                price=p.price,
+                for p in db_points
+                if p.timestamp.date() <= today
+            ]
+            return HistoryResult(
+                supported=True,
+                points=points,
+                period=period_upper,
+                start_date=resolved_start.isoformat(),
+                end_date=resolved_end.isoformat(),
                 currency=instrument.currency,
                 unit='UNITS',
-                source=p.provider or 'FEED',
-                is_synthetic=p.is_synthetic,
-                open_price=p.open_price,
-                high_price=p.high_price,
-                low_price=p.low_price,
-                volume=p.volume,
+                message=f"Retrieved {len(points)} verified historical data points.",
+                trust_class='VERIFIED_OFFICIAL',
             )
-            for p in db_points
-            if p.timestamp.date() <= today  # Enforce past or today only
-        ]
 
+        # 3. For strictly demo instruments (explicitly flagged demo only)
+        provider = provider_registry.get_provider_for_instrument(instrument)
+        if getattr(provider, 'provider_name', '') == 'DEMO' and getattr(instrument, 'is_synthetic', False):
+            fetched = provider.get_history(instrument, resolved_start, resolved_end, interval)
+            points = [
+                HistoryPoint(
+                    timestamp=p.timestamp,
+                    date=p.timestamp.date().isoformat(),
+                    price=p.price,
+                    currency=instrument.currency,
+                    unit='UNITS',
+                    source='DEMO',
+                    is_synthetic=True,
+                    trust_class='SYNTHETIC',
+                    open_price=p.open_price,
+                    high_price=p.high_price,
+                    low_price=p.low_price,
+                    volume=p.volume,
+                )
+                for p in fetched
+                if p.timestamp.date() <= today
+            ]
+            return HistoryResult(
+                supported=True,
+                points=points,
+                period=period_upper,
+                start_date=resolved_start.isoformat(),
+                end_date=resolved_end.isoformat(),
+                currency=instrument.currency,
+                unit='UNITS',
+                message="Retrieved synthetic demonstration data points.",
+                trust_class='SYNTHETIC',
+            )
+
+        # 4. If no verified history exists, return explicit empty/unsupported result without synthetic noise
         return HistoryResult(
             supported=True,
-            points=points,
+            points=[],
             period=period_upper,
             start_date=resolved_start.isoformat(),
             end_date=resolved_end.isoformat(),
             currency=instrument.currency,
             unit='UNITS',
-            message=f"Retrieved {len(points)} market feed data points.",
+            message='No verified historical market observations available for this instrument.',
+            trust_class='UNVERIFIED',
         )

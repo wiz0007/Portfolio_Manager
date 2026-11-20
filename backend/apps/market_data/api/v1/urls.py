@@ -9,8 +9,13 @@ from apps.market_data.api.v1.views import (
     MarketDataProvidersView,
     MarketDataQuoteView,
     MarketDataRefreshView,
+    MarketDataSeriesVersionView,
 )
 from apps.market_data.api.v1.views.operations import (
+    BulkPriceResolverView,
+    DatabaseHealthView,
+    HistoricalBackfillTriggerView,
+    HistoricalCoverageReportView,
     InstrumentCoverageViewSet,
     InstrumentRequestViewSet,
     MarketDataWorklistViewSet,
@@ -35,6 +40,7 @@ urlpatterns = [
     path('market-data/quotes/<uuid:pk>/', MarketDataQuoteView.as_view(), name='market-data-quote-detail'),
     path('market-data/quotes/', MarketDataQuoteView.as_view(), name='market-data-quotes'),
     path('market-data/history/<uuid:pk>/', MarketDataHistoryView.as_view(), name='market-data-history'),
+    path('market-data/series/<uuid:pk>/version/', MarketDataSeriesVersionView.as_view(), name='market-data-series-version'),
     path('market-data/overview/', MarketDataOverviewView.as_view(), name='market-data-overview'),
     path('market-data/providers/', MarketDataProvidersView.as_view(), name='market-data-providers'),
     path('market-data/health/', MarketDataHealthView.as_view(), name='market-data-health'),
@@ -44,4 +50,8 @@ urlpatterns = [
     path('market-data/import/preview/', PriceImportPreviewView.as_view(), name='market-data-import-preview'),
     path('market-data/import/commit/', PriceImportCommitView.as_view(), name='market-data-import-commit'),
     path('market-data/resolve/<uuid:instrument_id>/', PriceResolverView.as_view(), name='market-data-resolve'),
+    path('market-data/prices/bulk-resolve/', BulkPriceResolverView.as_view(), name='market-data-bulk-resolve'),
+    path('market-data/operations/database-health/', DatabaseHealthView.as_view(), name='market-data-database-health'),
+    path('market-data/operations/history-coverage/', HistoricalCoverageReportView.as_view(), name='market-data-history-coverage'),
+    path('market-data/operations/history-backfill/', HistoricalBackfillTriggerView.as_view(), name='market-data-history-backfill'),
 ]
