@@ -246,7 +246,7 @@ def main():
         price_type: str = PriceType.LTP,
         source: str = 'NSE_OFFICIAL',
         source_ref: str = 'https://archives.nseindia.com',
-        scheme_code: str = None,
+        scheme_code: str | None = None,
         effective_time = effective_dt,
     ):
         nonlocal created_instruments, updated_instruments, published_observations
@@ -264,7 +264,6 @@ def main():
         if not inst:
             inst = Instrument.objects.filter(symbol=symbol, exchange=exchange).first()
 
-        is_new = False
         if not inst:
             inst = Instrument(
                 id=uuid.uuid4(),
@@ -281,7 +280,6 @@ def main():
             )
             inst.save()
             created_instruments += 1
-            is_new = True
         else:
             inst.name = name
             inst.asset_class = asset_class

@@ -32,7 +32,7 @@ export const InstrumentPriceChart: React.FC<InstrumentPriceChartProps> = ({
     symbol.toUpperCase() === 'BANKNIFTY' ||
     historyData?.unit === 'POINTS';
 
-  const unitPrefix = isIndex ? '' : (historyData?.currency === 'INR' || !historyData?.currency ? '₹' : `${historyData.currency} `);
+  const unitPrefix = isIndex ? '' : (historyData?.currency ? (historyData.currency === 'INR' ? currency : `${historyData.currency} `) : currency);
   const unitSuffix = isIndex ? ' pts' : '';
 
   // Compute true OHLC metrics from actual point data

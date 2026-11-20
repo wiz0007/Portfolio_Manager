@@ -16,7 +16,7 @@ import { PriceChart } from '../components/PriceChart';
 import { OperatorWorklistPanel } from '../components/OperatorWorklistPanel';
 import { InstrumentRequestsQueue } from '../components/InstrumentRequestsQueue';
 import { useMarketHistory } from '../hooks/useMarketHistory';
-import { HistoricalPoint, Instrument, MarketOverviewData, MarketQuote } from '../types';
+import { Instrument, MarketOverviewData, MarketQuote } from '../types';
 import { Button } from '@/shared/ui/Button';
 
 export const MarketOverviewPage: React.FC = () => {
