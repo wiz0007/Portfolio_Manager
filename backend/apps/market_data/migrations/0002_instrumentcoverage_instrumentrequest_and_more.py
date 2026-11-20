@@ -201,7 +201,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='instrumentcoverage',
             name='instrument',
-            field=models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='coverage', to='market_data.instrument'),
+            field=models.OneToOneField(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='coverage', to='market_data.instrument'),
         ),
         migrations.AddField(
             model_name='instrumentrequest',
@@ -226,7 +226,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='marketdataworklistitem',
             name='instrument',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='worklist_items', to='market_data.instrument'),
+            field=models.ForeignKey(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='worklist_items', to='market_data.instrument'),
         ),
         migrations.AddField(
             model_name='marketdataworklistitem',
@@ -251,7 +251,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='priceobservation',
             name='instrument',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='observations', to='market_data.instrument'),
+            field=models.ForeignKey(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='observations', to='market_data.instrument'),
         ),
         migrations.AddField(
             model_name='priceobservation',

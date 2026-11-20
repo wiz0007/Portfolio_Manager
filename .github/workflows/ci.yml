@@ -61,7 +61,8 @@ jobs:
 
       - name: Verify Migration Consistency
         run: |
-          python backend/manage.py migrate
+          python backend/manage.py migrate --database default
+          python backend/manage.py migrate --database market_data
           python backend/manage.py makemigrations --check --dry-run
 
       - name: Run Pytest Test Suite

@@ -47,7 +47,7 @@ class Migration(migrations.Migration):
                 ('details', models.JSONField(blank=True, default=dict)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('instrument', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='reference_data', to='market_data.instrument')),
+                ('instrument', models.OneToOneField(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='reference_data', to='market_data.instrument')),
             ],
             options={
                 'db_table': 'instrument_reference_data',
@@ -70,7 +70,7 @@ class Migration(migrations.Migration):
                 ('is_synthetic', models.BooleanField(db_index=True, default=False, help_text='Explicit flag identifying synthetic demo data.')),
                 ('interval', models.CharField(db_index=True, default='1D', help_text="Timeframe interval, e.g., '1D', '1H', 'REALTIME'.", max_length=16)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('instrument', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='data_points', to='market_data.instrument')),
+                ('instrument', models.ForeignKey(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='data_points', to='market_data.instrument')),
             ],
             options={
                 'db_table': 'market_data_points',
@@ -89,7 +89,7 @@ class Migration(migrations.Migration):
                 ('metadata', models.JSONField(blank=True, default=dict)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('instrument', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='provider_mappings', to='market_data.instrument')),
+                ('instrument', models.ForeignKey(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='provider_mappings', to='market_data.instrument')),
             ],
             options={
                 'db_table': 'provider_instrument_mappings',
