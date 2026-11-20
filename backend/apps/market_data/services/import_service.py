@@ -185,7 +185,7 @@ class PriceImportService:
         }
 
     @classmethod
-    @transaction.atomic
+    @transaction.atomic(using='market_data')
     def commit_batch(cls, user, batch_id: Any) -> PriceImportBatch:
         """
         Commits a server-side validated preview batch without trusting client-supplied parsed rows.
@@ -237,7 +237,7 @@ class PriceImportService:
         return batch
 
     @classmethod
-    @transaction.atomic
+    @transaction.atomic(using='market_data')
     def commit_import(cls, user, preview_result: Dict[str, Any]) -> PriceImportBatch:
         """
         Persists validated rows as draft PriceObservations and logs batch audit history.

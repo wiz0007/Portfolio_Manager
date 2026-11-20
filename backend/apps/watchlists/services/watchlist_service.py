@@ -134,7 +134,7 @@ class WatchlistService:
     def list_items(cls, user: Any) -> List[Dict[str, Any]]:
         items = list(
             WatchlistItem.objects.filter(user=user)
-            .select_related('instrument', 'instrument__reference_data', 'instrument__coverage')
+            .select_related('instrument', 'instrument__reference_data')
             .order_by('-created_at')
         )
         if not items:
@@ -151,7 +151,7 @@ class WatchlistService:
         try:
             item = (
                 WatchlistItem.objects.filter(user=user, pk=item_id)
-                .select_related('instrument', 'instrument__reference_data', 'instrument__coverage')
+                .select_related('instrument', 'instrument__reference_data')
                 .get()
             )
         except (WatchlistItem.DoesNotExist, ValueError):

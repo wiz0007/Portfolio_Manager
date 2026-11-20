@@ -25,7 +25,7 @@ class InstrumentSearchService:
         qs = Instrument.objects.filter(
             status=InstrumentStatus.ACTIVE,
             is_active=True,
-        ).select_related('reference_data', 'coverage').prefetch_related('data_points')
+        ).select_related('reference_data')
 
         if asset_class:
             qs = qs.filter(asset_class=asset_class.upper())

@@ -211,12 +211,12 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='instrumentrequest',
             name='reviewed_by',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='reviewed_instrument_requests', to=settings.AUTH_USER_MODEL),
+            field=models.ForeignKey(blank=True, db_constraint=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='reviewed_instrument_requests', to=settings.AUTH_USER_MODEL),
         ),
         migrations.AddField(
             model_name='instrumentrequest',
             name='user',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='instrument_requests', to=settings.AUTH_USER_MODEL),
+            field=models.ForeignKey(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='instrument_requests', to=settings.AUTH_USER_MODEL),
         ),
         migrations.AddField(
             model_name='marketdataworklistitem',
@@ -236,7 +236,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='priceimportbatch',
             name='user',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='price_import_batches', to=settings.AUTH_USER_MODEL),
+            field=models.ForeignKey(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='price_import_batches', to=settings.AUTH_USER_MODEL),
         ),
         migrations.AddField(
             model_name='priceimportrowerror',
@@ -256,12 +256,12 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='priceobservation',
             name='published_by',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='published_observations', to=settings.AUTH_USER_MODEL),
+            field=models.ForeignKey(blank=True, db_constraint=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='published_observations', to=settings.AUTH_USER_MODEL),
         ),
         migrations.AddField(
             model_name='priceobservation',
             name='recorded_by',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='recorded_observations', to=settings.AUTH_USER_MODEL),
+            field=models.ForeignKey(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='recorded_observations', to=settings.AUTH_USER_MODEL),
         ),
         migrations.AddIndex(
             model_name='instrumentcoverage',

@@ -47,5 +47,15 @@ class InvestmentValuation(models.Model):
             models.Index(fields=['investment', 'valuation_method'], name='inv_val_meth_idx'),
         ]
 
+    def save(self, *args, **kwargs):
+        if not self._state.adding and self.pk:
+            from django.core.exceptions import ValidationError
+            raise ValidationError("Valuation snapshots are immutable point-in-time audit records and cannot be modified.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        raise ValidationError("Valuation snapshots cannot be deleted.")
+
     def __str__(self) -> str:
         return f"Valuation {self.currency} {self.amount} on {self.valuation_date} ({self.investment.display_name})"

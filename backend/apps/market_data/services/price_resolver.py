@@ -6,8 +6,8 @@ from typing import Dict, Optional, Sequence
 
 from django.utils import timezone as dj_timezone
 
+from apps.market_data.models.coverage import InstrumentCoverage
 from apps.market_data.models.instrument import Instrument
-from apps.market_data.models.market_data_point import MarketDataPoint
 from apps.market_data.models.observation import ObservationStatus, PriceObservation
 
 
@@ -138,33 +138,7 @@ class PriceResolver:
                 notes='Price observation has been drafted and is awaiting verification by publisher.',
             )
 
-        # 3. Check for MarketDataPoint (demo/synthetic provider data in development)
-        latest_point = MarketDataPoint.objects.filter(
-            instrument=instrument,
-            timestamp__lte=obs_dt,
-        ).order_by('-timestamp').first()
-
-        if latest_point and latest_point.price:
-            status = (
-                ResolutionStatus.SYNTHETIC
-                if latest_point.is_synthetic
-                else ResolutionStatus.AVAILABLE
-            )
-            return ResolvedPrice(
-                price=latest_point.price,
-                status=status,
-                source=latest_point.provider or 'MARKET_FEED',
-                source_reference=instrument.symbol,
-                effective_at=latest_point.timestamp,
-                published_at=latest_point.created_at if hasattr(latest_point, 'created_at') else latest_point.timestamp,
-                price_type=target_price_type or 'LTP',
-                currency=instrument.currency,
-                unit='UNITS',
-                is_synthetic=latest_point.is_synthetic,
-                notes='Resolved from market feed data point.',
-            )
-
-        # 4. Price unavailable: missing prices must have price=None, effective_at=None, published_at=None
+        # 3. Price unavailable: missing prices must have price=None, effective_at=None, published_at=None
         return ResolvedPrice(
             price=None,
             status=ResolutionStatus.MISSING,
@@ -176,7 +150,7 @@ class PriceResolver:
             currency=instrument.currency,
             unit=cov.unit if cov else 'UNITS',
             is_synthetic=False,
-            notes=f"No published price observation or quote available on or before {obs_dt.isoformat()}.",
+            notes=f"No published price observation available on or before {obs_dt.isoformat()}.",
         )
 
     @classmethod
@@ -204,9 +178,14 @@ class PriceResolver:
                 effective_at__lte=obs_dt,
             )
             .exclude(corrections__status=ObservationStatus.PUBLISHED)
-            .select_related('instrument', 'instrument__coverage')
             .order_by('instrument_id', '-effective_at', '-published_at', '-created_at')
         )
+
+        # Batch load coverages for requested instruments
+        coverages = {
+            cov.instrument_id: cov
+            for cov in InstrumentCoverage.objects.filter(instrument_id__in=inst_ids)
+        }
 
         latest_by_inst: Dict[uuid.UUID, PriceObservation] = {}
         for obs in published_qs:
@@ -223,25 +202,11 @@ class PriceResolver:
             ).values_list('instrument_id', flat=True)
         )
 
-        # 3. Check MarketDataPoints for remaining
-        remaining_ids = [iid for iid in missing_ids if iid not in pending_set]
-        points_qs = (
-            MarketDataPoint.objects.filter(
-                instrument_id__in=remaining_ids,
-                timestamp__lte=obs_dt,
-            )
-            .order_by('instrument_id', '-timestamp')
-        )
-        point_by_inst: Dict[uuid.UUID, MarketDataPoint] = {}
-        for pt in points_qs:
-            if pt.instrument_id not in point_by_inst:
-                point_by_inst[pt.instrument_id] = pt
-
         results: Dict[uuid.UUID, ResolvedPrice] = {}
         now = dj_timezone.now()
 
         for inst_id, inst in unique_insts.items():
-            cov = getattr(inst, 'coverage', None)
+            cov = coverages.get(inst_id) or getattr(inst, 'coverage', None)
 
             if inst_id in latest_by_inst:
                 latest_obs = latest_by_inst[inst_id]
@@ -303,22 +268,6 @@ class PriceResolver:
                     unit=cov.unit if cov else 'UNITS',
                     is_synthetic=False,
                     notes='Awaiting verification by publisher.',
-                )
-
-            elif inst_id in point_by_inst and point_by_inst[inst_id].price:
-                pt = point_by_inst[inst_id]
-                results[inst_id] = ResolvedPrice(
-                    price=pt.price,
-                    status=ResolutionStatus.SYNTHETIC if pt.is_synthetic else ResolutionStatus.AVAILABLE,
-                    source=pt.provider or 'MARKET_FEED',
-                    source_reference=inst.symbol,
-                    effective_at=pt.timestamp,
-                    published_at=pt.timestamp,
-                    price_type=cov.price_type if cov else 'LTP',
-                    currency=inst.currency,
-                    unit='UNITS',
-                    is_synthetic=pt.is_synthetic,
-                    notes='Resolved from market feed data point.',
                 )
 
             else:

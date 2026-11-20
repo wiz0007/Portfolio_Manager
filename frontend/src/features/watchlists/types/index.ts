@@ -83,17 +83,34 @@ export interface HistoryPoint {
   volume?: number | null;
 }
 
+export interface ChartDataPoint {
+  date: string;
+  close: string;
+  open?: string | null;
+  high?: string | null;
+  low?: string | null;
+  volume?: number | null;
+}
+
 export interface InstrumentHistoryResponse {
   instrument_id: string;
   symbol: string;
+  series_id?: string;
+  frequency?: string;
+  price_type?: string;
+  data_version?: number;
+  last_effective_date?: string | null;
+  last_published_at?: string | null;
   supported: boolean;
   period: string;
   start_date: string | null;
   end_date: string | null;
   currency: string;
   unit: string;
+  trust_class?: string;
   message: string;
   points: HistoryPoint[];
+  data?: ChartDataPoint[];
 }
 
 export interface InstrumentMarketStatus {

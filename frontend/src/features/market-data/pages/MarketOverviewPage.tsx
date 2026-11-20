@@ -15,6 +15,7 @@ import { QuoteCard } from '../components/QuoteCard';
 import { PriceChart } from '../components/PriceChart';
 import { OperatorWorklistPanel } from '../components/OperatorWorklistPanel';
 import { InstrumentRequestsQueue } from '../components/InstrumentRequestsQueue';
+import { useMarketHistory } from '../hooks/useMarketHistory';
 import { HistoricalPoint, Instrument, MarketOverviewData, MarketQuote } from '../types';
 import { Button } from '@/shared/ui/Button';
 
@@ -23,11 +24,16 @@ export const MarketOverviewPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'OVERVIEW' | 'WORKLIST' | 'REQUESTS'>('OVERVIEW');
   const [overview, setOverview] = useState<MarketOverviewData | null>(null);
   const [selectedInstrument, setSelectedInstrument] = useState<Instrument | null>(null);
-  const [historyPoints, setHistoryPoints] = useState<HistoricalPoint[]>([]);
   const [selectedRange, setSelectedRange] = useState<string>('1M');
   const [isLoadingOverview, setIsLoadingOverview] = useState(true);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [activeTab, setActiveTab] = useState<'EQUITY' | 'MUTUAL_FUND'>('EQUITY');
+
+  // TanStack Query caching for historical timeseries chart (1h staleTime, 24h gcTime)
+  const { data: historyPoints = [], isLoading: isLoadingHistory } = useMarketHistory({
+    instrumentId: selectedInstrument?.id || '',
+    range: selectedRange,
+    enabled: Boolean(selectedInstrument?.id),
+  });
 
   // Load initial market overview data
   const loadOverview = async () => {
@@ -53,34 +59,7 @@ export const MarketOverviewPage: React.FC = () => {
     loadOverview();
   }, []);
 
-  // Load history when selected instrument or range changes
-  useEffect(() => {
-    if (!selectedInstrument) return;
 
-    const daysMap: Record<string, number> = {
-      '1W': 7,
-      '1M': 30,
-      '3M': 90,
-      '6M': 180,
-      '1Y': 365,
-      'ALL': 730,
-    };
-    const days = daysMap[selectedRange] || 30;
-
-    setIsLoadingHistory(true);
-    marketDataApi
-      .getHistory(selectedInstrument.id, { days })
-      .then((pts) => {
-        setHistoryPoints(pts);
-      })
-      .catch((err) => {
-        console.error('Failed to load price history:', err);
-        setHistoryPoints([]);
-      })
-      .finally(() => {
-        setIsLoadingHistory(false);
-      });
-  }, [selectedInstrument, selectedRange]);
 
   const handleSelectFromSearch = async (inst: Instrument) => {
     try {

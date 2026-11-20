@@ -86,6 +86,15 @@ class MutualFundValuationStrategy(BaseAssetValuationStrategy):
                     f"Failed to fetch NAV for mutual fund instrument {investment.instrument_id}: {e}"
                 )
 
+            if nav_price is None:
+                latest_quote = investment.instrument.latest_quote
+                if latest_quote and latest_quote.price:
+                    nav_price = latest_quote.price
+                    source_name = latest_quote.provider or 'MARKET_DATA'
+                    source_ref = investment.instrument.symbol
+                    is_synthetic = latest_quote.is_synthetic
+                    quote_ts = latest_quote.timestamp
+
         # 2. If NAV is unavailable, check for user explicit estimate
         if nav_price is None:
             raw_nav = details.get('nav') or details.get('current_nav') or details.get('user_estimate')

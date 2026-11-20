@@ -2,6 +2,7 @@ import uuid
 
 from django.db import models
 
+from apps.market_data.models.common import CrossDbQuerySet
 from apps.market_data.models.coverage import InstrumentCoverage
 from apps.market_data.models.instrument import Instrument
 
@@ -60,6 +61,8 @@ class MarketDataWorklistItem(models.Model):
     Has a stable item ID for versioned CSV import reconciliation.
     """
 
+    objects = CrossDbQuerySet.as_manager()
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     worklist = models.ForeignKey(
         MarketDataWorklist,
@@ -67,11 +70,10 @@ class MarketDataWorklistItem(models.Model):
         related_name='items',
         db_index=True,
     )
-    instrument = models.ForeignKey(
-        Instrument,
-        on_delete=models.CASCADE,
-        related_name='worklist_items',
+    instrument_id = models.UUIDField(
         db_index=True,
+        default=uuid.uuid4,
+        help_text="Canonical Instrument UUID (Primary DB)",
     )
     coverage = models.ForeignKey(
         InstrumentCoverage,
@@ -114,11 +116,32 @@ class MarketDataWorklistItem(models.Model):
     class Meta:
         db_table = 'market_data_worklist_items'
         ordering = ['asset_class', 'symbol']
-        unique_together = ('worklist', 'instrument')
+        unique_together = ('worklist', 'instrument_id')
         indexes = [
             models.Index(fields=['worklist', 'status'], name='wli_wl_status_idx'),
             models.Index(fields=['effective_date', 'status'], name='wli_eff_status_idx'),
         ]
+
+    def __init__(self, *args, **kwargs):
+        inst = kwargs.pop('instrument', None)
+        super().__init__(*args, **kwargs)
+        if inst is not None:
+            self.instrument_id = getattr(inst, 'id', inst)
+            self._cached_instrument = inst if hasattr(inst, 'id') else None
+
+    @property
+    def instrument(self):
+        if hasattr(self, '_cached_instrument') and self._cached_instrument is not None:
+            return self._cached_instrument
+        if not self.instrument_id:
+            return None
+        self._cached_instrument = Instrument.objects.using('default').filter(id=self.instrument_id).first()
+        return self._cached_instrument
+
+    @instrument.setter
+    def instrument(self, value):
+        self.instrument_id = getattr(value, 'id', value) if value else None
+        self._cached_instrument = value
 
     def __str__(self) -> str:
         return f"WorklistItem({self.symbol} [{self.effective_date}]: {self.status})"

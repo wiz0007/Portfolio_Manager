@@ -112,6 +112,15 @@ class GoldValuationStrategy(BaseAssetValuationStrategy):
             except Exception:
                 pass
 
+            if rate_24k is None:
+                latest_quote = investment.instrument.latest_quote
+                if latest_quote and latest_quote.price:
+                    rate_24k = latest_quote.price
+                    source_name = latest_quote.provider or 'MARKET_DATA'
+                    source_ref = investment.instrument.symbol
+                    is_synthetic = latest_quote.is_synthetic
+                    obs_dt = latest_quote.timestamp
+
         if rate_24k is None:
             raw_p = details.get('current_price_per_gram') or details.get('user_estimate')
             if raw_p is not None:

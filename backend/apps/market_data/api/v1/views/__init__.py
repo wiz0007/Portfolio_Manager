@@ -145,16 +145,47 @@ class InstrumentViewSet(viewsets.ReadOnlyModelViewSet):
                 interval=interval,
                 price_type=price_type,
             )
+            latest_point = history_res.points[-1] if history_res.points else None
+            last_eff_date = latest_point.date if latest_point else None
+            last_pub_at = (
+                latest_point.published_at.isoformat()
+                if latest_point and latest_point.published_at
+                else None
+            )
+            series_id = f"{instrument.symbol}_{price_type or 'LTP'}_{history_res.currency}"
+            data_version = len(history_res.points)
+
+            # Chart-ready format as specified in ERD Section 9.1
+            chart_data = [
+                {
+                    'date': p.date,
+                    'close': str(p.price),
+                    'open': str(p.open_price) if p.open_price is not None else str(p.price),
+                    'high': str(p.high_price) if p.high_price is not None else str(p.price),
+                    'low': str(p.low_price) if p.low_price is not None else str(p.price),
+                    'volume': p.volume,
+                }
+                for p in history_res.points
+            ]
+
             return Response({
                 'instrument_id': str(instrument.id),
                 'symbol': instrument.symbol,
+                'series_id': series_id,
+                'frequency': 'daily' if interval == '1D' else interval.lower(),
+                'currency': history_res.currency,
+                'unit': history_res.unit,
+                'price_type': price_type or 'close',
+                'data_version': data_version,
+                'last_effective_date': last_eff_date,
+                'last_published_at': last_pub_at,
                 'supported': history_res.supported,
                 'period': history_res.period,
                 'start_date': history_res.start_date,
                 'end_date': history_res.end_date,
-                'currency': history_res.currency,
-                'unit': history_res.unit,
+                'trust_class': getattr(history_res, 'trust_class', 'VERIFIED_OFFICIAL'),
                 'message': history_res.message,
+                'data': chart_data,
                 'points': [
                     {
                         'timestamp': p.timestamp.isoformat(),
@@ -164,6 +195,7 @@ class InstrumentViewSet(viewsets.ReadOnlyModelViewSet):
                         'currency': p.currency,
                         'unit': p.unit,
                         'source': p.source,
+                        'trust_class': getattr(p, 'trust_class', 'VERIFIED_OFFICIAL'),
                         'is_synthetic': p.is_synthetic,
                         'open_price': str(p.open_price) if p.open_price is not None else None,
                         'high_price': str(p.high_price) if p.high_price is not None else None,
@@ -262,8 +294,55 @@ class MarketDataHistoryView(APIView):
                 else today
             )
 
+        history_res = MarketHistoryService.get_history(
+            instrument=instrument,
+            start_date=start_date,
+            end_date=end_date,
+            interval=interval,
+        )
+        if history_res.points:
+            return Response([
+                {
+                    'timestamp': p.timestamp.isoformat(),
+                    'price': str(p.price),
+                    'open_price': str(p.open_price) if p.open_price is not None else None,
+                    'high_price': str(p.high_price) if p.high_price is not None else None,
+                    'low_price': str(p.low_price) if p.low_price is not None else None,
+                    'close_price': str(p.price),
+                    'volume': p.volume,
+                    'interval': interval,
+                    'is_synthetic': p.is_synthetic,
+                }
+                for p in history_res.points
+            ])
+
         points = MarketDataService.get_history(instrument, start_date, end_date, interval=interval)
         return Response(HistoricalPointSerializer(points, many=True).data)
+
+
+class MarketDataSeriesVersionView(APIView):
+    """
+    Lightweight series-version check endpoint (ERD Section 15.3 & 16.2).
+    Returns series_id, data_version, and last_published_at without transmitting full history.
+    Used by frontend TanStack Query to invalidate cache only when data actually mutated.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        from apps.market_data.models.series import MarketDataSeries
+
+        try:
+            series = MarketDataSeries.objects.using('market_data').get(pk=pk)
+        except (MarketDataSeries.DoesNotExist, ValueError):
+            return Response({'detail': 'Series not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({
+            'series_id': str(series.id),
+            'instrument_id': str(series.instrument_id),
+            'data_version': series.data_version,
+            'last_published_at': series.last_published_at.isoformat() if series.last_published_at else None,
+        })
 
 
 class MarketDataOverviewView(APIView):

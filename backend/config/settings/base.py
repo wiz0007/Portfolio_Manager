@@ -96,31 +96,46 @@ except ImportError:
     except ImportError:
         DATABASE_ENGINE = 'django_pg8000'
 
-DATABASE_URL = os.getenv('DATABASE_URL')
-if DATABASE_URL:
-    ssl_require = 'neon.tech' in DATABASE_URL or 'sslmode=require' in DATABASE_URL
-    parsed_db = dj_database_url.parse(DATABASE_URL, conn_max_age=0, ssl_require=ssl_require)
-    if parsed_db.get('PASSWORD'):
-        parsed_db['PASSWORD'] = unquote(parsed_db['PASSWORD'])
-    parsed_db['ENGINE'] = DATABASE_ENGINE
+def _parse_database_url(url: str):
+    if not url:
+        return None
+    ssl_require = 'neon.tech' in url or 'sslmode=require' in url
+    parsed = dj_database_url.parse(url, conn_max_age=0, ssl_require=ssl_require)
+    if parsed.get('PASSWORD'):
+        parsed['PASSWORD'] = unquote(parsed['PASSWORD'])
+    parsed['ENGINE'] = DATABASE_ENGINE
     if DATABASE_ENGINE == 'django_pg8000':
         import ssl
-        options = parsed_db.setdefault('OPTIONS', {})
+        options = parsed.setdefault('OPTIONS', {})
         options.pop('sslmode', None)
         options.pop('channel_binding', None)
         options['ssl_context'] = ssl.create_default_context()
+    return parsed
 
-    DATABASES = {
-        'default': parsed_db
-    }
+DATABASE_URL = os.getenv('DATABASE_URL')
+# Market Data Storage Database URL (Neon Storage)
+NEON_STORAGE_DATABASE_URL = (
+    os.getenv('NEON_STORAGE_DATABASE_URL')
+    or os.getenv('MARKET_DATA_STORAGE_DATABASE_URL')
+    or os.getenv('NEON_STORAGE_URL')
+    or os.getenv('MARKET_DATA_DATABASE_URL')
+)
+
+DATABASES = {}
+
+if DATABASE_URL:
+    DATABASES['default'] = _parse_database_url(DATABASE_URL)
 else:
     # Safe fallback when DATABASE_URL is not set (e.g. CI checks / test settings)
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
+    DATABASES['default'] = {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
+
+if NEON_STORAGE_DATABASE_URL:
+    DATABASES['market_data'] = _parse_database_url(NEON_STORAGE_DATABASE_URL)
+
+DATABASE_ROUTERS = ['config.database.routers.MarketDataRouter']
 
 # Custom User Model
 AUTH_USER_MODEL = 'users.User'

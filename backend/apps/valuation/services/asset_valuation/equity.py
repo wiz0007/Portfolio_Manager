@@ -86,6 +86,16 @@ class EquityValuationStrategy(BaseAssetValuationStrategy):
                     f"Failed to fetch market price for instrument {investment.instrument_id}: {e}"
                 )
 
+            # Fallback to latest_quote on instrument if PriceResolver returned missing
+            if market_price is None:
+                latest_quote = investment.instrument.latest_quote
+                if latest_quote and latest_quote.price:
+                    market_price = latest_quote.price
+                    source_name = latest_quote.provider or 'MARKET_DATA'
+                    source_ref = investment.instrument.symbol
+                    is_synthetic = latest_quote.is_synthetic
+                    quote_ts = latest_quote.timestamp
+
         # 2. If market price is unavailable, check for user explicit estimate
         if market_price is None:
             raw_estimate = details.get('current_price') or details.get('user_estimate')

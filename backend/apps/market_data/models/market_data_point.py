@@ -17,6 +17,7 @@ class MarketDataPoint(models.Model):
         on_delete=models.CASCADE,
         related_name='data_points',
         db_index=True,
+        db_constraint=False,
     )
     timestamp = models.DateTimeField(db_index=True)
     price = models.DecimalField(

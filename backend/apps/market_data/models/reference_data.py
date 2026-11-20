@@ -24,6 +24,7 @@ class InstrumentReferenceData(models.Model):
         Instrument,
         on_delete=models.CASCADE,
         related_name='reference_data',
+        db_constraint=False,
     )
     sector = models.CharField(max_length=128, blank=True, default='', db_index=True)
     industry = models.CharField(max_length=128, blank=True, default='')

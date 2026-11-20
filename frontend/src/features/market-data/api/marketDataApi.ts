@@ -39,15 +39,27 @@ export const marketDataApi = {
 
   getHistory: (
     id: string,
-    options?: { days?: number; from?: string; to?: string; interval?: string }
+    options?: {
+      days?: number;
+      from?: string;
+      to?: string;
+      interval?: string;
+      period?: string;
+      price_type?: string;
+      series_id?: string;
+      signal?: AbortSignal;
+    }
   ): Promise<HistoricalPoint[]> => {
     const query = new URLSearchParams();
     if (options?.days) query.append('days', options.days.toString());
     if (options?.from) query.append('from', options.from);
     if (options?.to) query.append('to', options.to);
     if (options?.interval) query.append('interval', options.interval);
+    if (options?.period) query.append('period', options.period);
+    if (options?.price_type) query.append('price_type', options.price_type);
+    if (options?.series_id) query.append('series_id', options.series_id);
     const qs = query.toString() ? `?${query.toString()}` : '';
-    return apiClient.get<HistoricalPoint[]>(`/market-data/history/${id}/${qs}`);
+    return apiClient.get<HistoricalPoint[]>(`/market-data/history/${id}/${qs}`, { signal: options?.signal });
   },
 
   getMarketOverview: (): Promise<MarketOverviewData> => {

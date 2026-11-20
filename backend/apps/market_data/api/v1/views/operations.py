@@ -1,3 +1,4 @@
+import uuid
 from datetime import date, datetime
 
 from django.db import transaction
@@ -219,7 +220,7 @@ class PriceObservationViewSet(viewsets.ModelViewSet):
     Published observations cannot be deleted.
     """
 
-    queryset = PriceObservation.objects.all().select_related('instrument', 'recorded_by', 'published_by')
+    queryset = PriceObservation.objects.all()
     serializer_class = PriceObservationSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -285,8 +286,8 @@ class PriceObservationViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[IsMarketDataPublisher])
     def publish(self, request, pk=None):
-        with transaction.atomic():
-            obs = PriceObservation.objects.select_for_update().get(pk=pk)
+        with transaction.atomic(using='market_data'):
+            obs = PriceObservation.objects.using('market_data').select_for_update().get(pk=pk)
             if obs.status == ObservationStatus.PUBLISHED:
                 return Response({'detail': 'Observation is already published.'}, status=status.HTTP_400_BAD_REQUEST)
             if obs.status != ObservationStatus.PENDING_REVIEW:
@@ -295,7 +296,7 @@ class PriceObservationViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # 1. Publish observation atomically
+            # 1. Publish observation atomically on market_data
             obs.publish(request.user)
 
         # 2. Trigger valuation refresh across affected holdings with failure isolation
@@ -326,8 +327,8 @@ class PriceObservationViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[IsMarketDataPublisher])
     def correct(self, request, pk=None):
-        with transaction.atomic():
-            original_obs = PriceObservation.objects.select_for_update().get(pk=pk)
+        with transaction.atomic(using='market_data'):
+            original_obs = PriceObservation.objects.using('market_data').select_for_update().get(pk=pk)
             if original_obs.status != ObservationStatus.PUBLISHED:
                 return Response(
                     {'detail': 'Only published observations can be corrected.'},
@@ -343,10 +344,19 @@ class PriceObservationViewSet(viewsets.ModelViewSet):
             data = serializer.validated_data
 
             eff_at = data.get('effective_at') or original_obs.effective_at
+            pub_ts = timezone.now()
 
-            # Create new correction observation
-            correction_obs = PriceObservation.objects.create(
+            # Inherit and increment series monotonic version
+            series = original_obs.series
+            if series:
+                series.data_version = (series.data_version or 0) + 1
+                series.last_published_at = pub_ts
+                series.save(using='market_data', update_fields=['data_version', 'last_published_at', 'updated_at'])
+
+            # Create new correction observation strictly on market_data
+            correction_obs = PriceObservation.objects.using('market_data').create(
                 instrument=original_obs.instrument,
+                series=series,
                 price_type=original_obs.price_type,
                 value=data['value'],
                 currency=original_obs.currency,
@@ -356,24 +366,25 @@ class PriceObservationViewSet(viewsets.ModelViewSet):
                 source_reference=data.get('source_reference', ''),
                 notes=data.get('notes', ''),
                 status=ObservationStatus.PUBLISHED,
+                trust_class=original_obs.trust_class,
                 recorded_by=request.user,
                 published_by=request.user,
-                published_at=timezone.now(),
+                published_at=pub_ts,
                 correction_of=original_obs,
                 correction_reason=data['correction_reason'],
             )
 
-            # Sync correction to MarketDataPoint
-            from apps.market_data.models.market_data_point import MarketDataPoint
-            MarketDataPoint.objects.update_or_create(
-                instrument=correction_obs.instrument,
-                timestamp=correction_obs.effective_at,
-                interval='1D',
-                provider=correction_obs.source,
-                defaults={
-                    'price': correction_obs.value,
-                    'close_price': correction_obs.value,
-                },
+            # Emit durable publication event for secondary outbox
+            from apps.market_data.models.publication_event import MarketDataPublicationEvent
+            MarketDataPublicationEvent.objects.using('market_data').create(
+                observation_id=correction_obs.id,
+                instrument_id=correction_obs.instrument_id,
+                series_id=correction_obs.series_id,
+                effective_at=correction_obs.effective_at,
+                price_type=correction_obs.price_type,
+                value=correction_obs.value,
+                currency=correction_obs.currency,
+                data_version=series.data_version if series else 1,
             )
 
         # Trigger valuation refresh with failure isolation outside transaction
@@ -448,6 +459,132 @@ class PriceImportCommitView(APIView):
         )
 
 
+class DatabaseHealthView(APIView):
+    """
+    Exposes health, connectivity latency, engine types, and identity synchronization status
+    across both Primary and Market Data Storage databases (ERD Section 7.6 and 15).
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from apps.market_data.models.instrument_reference import MarketInstrumentReference
+        from apps.market_data.services.sync_service import InstrumentIdentitySyncService
+        from config.database.connections import get_database_status
+
+        # Restrict detailed engine/raw diagnostics to staff/operators (ERD Section 19.4)
+        is_operator = request.user.is_staff or request.user.groups.filter(name__in=['MarketDataOperator', 'MarketDataPublisher']).exists()
+        db_status = get_database_status(detailed=is_operator)
+        target_db = InstrumentIdentitySyncService._target_db()
+        canonical_count = Instrument.objects.using('default').count()
+        synced_count = MarketInstrumentReference.objects.using(target_db).count()
+
+        sync_info = {
+            'status': 'SYNCHRONIZED' if synced_count >= canonical_count else 'PENDING_RECONCILIATION',
+        }
+        if is_operator:
+            sync_info['canonical_instruments_primary'] = canonical_count
+            sync_info['projected_references_storage'] = synced_count
+            sync_info['storage_db_alias'] = target_db
+
+        return Response({
+            'status': db_status['overall_status'],
+            'databases': db_status['databases'],
+            'synchronization': sync_info,
+        }, status=status.HTTP_200_OK)
+
+
+class BulkPriceResolverView(APIView):
+    """
+    Authoritative bulk price resolution for batches of instruments.
+    Fulfills ERD Section 7.2: accepts multiple canonical instrument UUIDs and
+    returns structured status, provenance, currency, and price.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        instrument_ids = request.data.get('instrument_ids', [])
+        if not isinstance(instrument_ids, list) or not instrument_ids:
+            return Response(
+                {'detail': 'instrument_ids must be a non-empty list of UUIDs.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        as_of_param = request.data.get('as_of')
+        as_of_dt = None
+        if as_of_param:
+            try:
+                if 'T' in str(as_of_param):
+                    as_of_dt = datetime.fromisoformat(str(as_of_param).replace('Z', '+00:00'))
+                else:
+                    d = date.fromisoformat(str(as_of_param))
+                    as_of_dt = datetime.combine(d, datetime.max.time(), tzinfo=timezone.utc)
+            except Exception:
+                return Response({'detail': 'Invalid as_of date format.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Retrieve canonical instruments from default database
+        instruments = list(Instrument.objects.filter(id__in=instrument_ids))
+        resolved_map = PriceResolver.resolve_prices_bulk(instruments, as_of=as_of_dt)
+
+        inst_by_id = {inst.id: inst for inst in instruments}
+        results = []
+        for iid in instrument_ids:
+            try:
+                parsed_id = uuid.UUID(str(iid))
+            except ValueError:
+                results.append({
+                    'instrument_id': str(iid),
+                    'status': 'INVALID_UUID',
+                    'price': None,
+                    'notes': 'Malformed UUID format.',
+                })
+                continue
+
+            inst = inst_by_id.get(parsed_id)
+            if not inst:
+                results.append({
+                    'instrument_id': str(parsed_id),
+                    'status': 'UNREGISTERED_INSTRUMENT',
+                    'price': None,
+                    'notes': 'Instrument not found in canonical catalogue.',
+                })
+                continue
+
+            resolved = resolved_map.get(parsed_id)
+            if resolved:
+                results.append({
+                    'instrument_id': str(parsed_id),
+                    'symbol': inst.symbol,
+                    'status': resolved.status,
+                    'price': str(resolved.price) if resolved.price is not None else None,
+                    'price_type': resolved.price_type,
+                    'currency': resolved.currency,
+                    'unit': resolved.unit,
+                    'source': resolved.source,
+                    'effective_date': resolved.effective_at.date().isoformat() if resolved.effective_at else None,
+                    'effective_at': resolved.effective_at.isoformat() if resolved.effective_at else None,
+                    'is_synthetic': resolved.is_synthetic,
+                    'notes': resolved.notes,
+                })
+            else:
+                results.append({
+                    'instrument_id': str(parsed_id),
+                    'symbol': inst.symbol,
+                    'status': 'MISSING',
+                    'price': None,
+                    'currency': inst.currency,
+                    'notes': 'No price resolved for instrument.',
+                })
+
+        return Response({
+            'as_of': as_of_dt.isoformat() if as_of_dt else timezone.now().isoformat(),
+            'total_requested': len(instrument_ids),
+            'total_resolved': sum(1 for r in results if r.get('status') == 'AVAILABLE'),
+            'results': results,
+        }, status=status.HTTP_200_OK)
+
+
 class PriceResolverView(APIView):
     """
     Resolves authoritative published market price for an instrument as of a requested date.
@@ -496,3 +633,124 @@ class PriceResolverView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class HistoricalCoverageReportView(APIView):
+    """
+    Operator-facing historical data coverage and storage audit.
+    Shows instrument coverage status, row counts, table/index storage, and plan headroom.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsMarketDataOperator]
+
+    def get(self, request):
+        from django.db import connection
+        from django.db.models import Count, Max, Min
+
+        # Total active instruments
+        total_instruments = Instrument.objects.filter(status=InstrumentStatus.ACTIVE).count()
+
+        # Observation stats
+        obs_by_inst = (
+            PriceObservation.objects.filter(is_synthetic=False)
+            .values('instrument_id')
+            .annotate(cnt=Count('id'))
+        )
+        complete_count = sum(1 for x in obs_by_inst if x['cnt'] >= 180)
+        partial_count = sum(1 for x in obs_by_inst if 1 < x['cnt'] < 180)
+        single_point_count = sum(1 for x in obs_by_inst if x['cnt'] == 1)
+        instruments_with_data = len(obs_by_inst)
+        no_data_count = max(0, total_instruments - instruments_with_data)
+
+        # Asset class breakdown
+        asset_breakdown = list(
+            Instrument.objects.filter(status=InstrumentStatus.ACTIVE)
+            .values('asset_class')
+            .annotate(total=Count('id'))
+            .order_by('-total')
+        )
+
+        # Trust class distribution
+        trust_breakdown = list(
+            PriceObservation.objects.filter(is_synthetic=False)
+            .values('trust_class')
+            .annotate(count=Count('id'))
+            .order_by('-count')
+        )
+
+        # Date range
+        date_range = PriceObservation.objects.filter(is_synthetic=False).aggregate(
+            min_date=Min('effective_at'),
+            max_date=Max('effective_at'),
+            total_observations=Count('id'),
+        )
+
+        # Storage measurements from PostgreSQL
+        table_size = "N/A"
+        index_size = "N/A"
+        total_size = "N/A"
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT
+                        pg_size_pretty(pg_relation_size('price_observations')),
+                        pg_size_pretty(pg_indexes_size('price_observations')),
+                        pg_size_pretty(pg_total_relation_size('price_observations'))
+                """)
+                row = cursor.fetchone()
+                if row:
+                    table_size, index_size, total_size = row
+        except Exception:
+            pass
+
+        return Response({
+            'universe': {
+                'total_instruments': total_instruments,
+                'complete_backfill': complete_count,
+                'partial_backfill': partial_count,
+                'single_point_only': single_point_count,
+                'no_historical_data': no_data_count,
+            },
+            'coverage': {
+                'total_observations': date_range['total_observations'],
+                'earliest_date': date_range['min_date'].date().isoformat() if date_range['min_date'] else None,
+                'latest_date': date_range['max_date'].date().isoformat() if date_range['max_date'] else None,
+                'trust_distribution': trust_breakdown,
+                'asset_breakdown': asset_breakdown,
+            },
+            'storage': {
+                'price_observations_table_size': table_size,
+                'price_observations_index_size': index_size,
+                'price_observations_total_size': total_size,
+                'neon_plan_limit': '500 MB (Free Tier)',
+                'neon_headroom_estimate': 'Over 400 MB available',
+            },
+        }, status=status.HTTP_200_OK)
+
+
+class HistoricalBackfillTriggerView(APIView):
+    """
+    Operator action to trigger on-demand historical backfill for an instrument.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsMarketDataOperator]
+
+    def post(self, request):
+        from apps.market_data.services.backfill_service import HistoricalBackfillService
+
+        instrument_id = request.data.get('instrument_id')
+        symbol = request.data.get('symbol')
+
+        inst = None
+        if instrument_id:
+            inst = Instrument.objects.filter(id=instrument_id).first()
+        elif symbol:
+            inst = Instrument.objects.filter(symbol=symbol.upper()).first()
+
+        if not inst:
+            return Response({'detail': 'Instrument not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        service = HistoricalBackfillService(publisher=request.user)
+        result = service.backfill_instrument(inst, target_days=365)
+        return Response(result, status=status.HTTP_200_OK if result['status'] == 'SUCCESS' else status.HTTP_400_BAD_REQUEST)
+

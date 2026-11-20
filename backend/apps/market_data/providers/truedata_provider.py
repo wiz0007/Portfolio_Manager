@@ -67,18 +67,19 @@ class TrueDataMarketDataProvider(BaseMarketDataProvider):
         if self.has_credentials:
             return ProviderHealth(
                 name=self.provider_name,
-                is_available=True,
-                latency_ms=45.0,
+                is_available=False,
+                latency_ms=None,
                 last_checked=datetime.now(timezone.utc),
-                message='TrueData live credentials active.',
-                mode='PRODUCTION',
+                message='TrueData live adapter methods are pending vendor implementation.',
+                mode='NOT_IMPLEMENTED',
+                metadata={'status': 'Live adapter pending implementation'},
             )
         return ProviderHealth(
             name=self.provider_name,
             is_available=False,
             latency_ms=None,
             last_checked=datetime.now(timezone.utc),
-            message='TrueData credentials pending from vendor. Demo provider active for equities.',
+            message='TrueData credentials pending from vendor. Demo provider active for equities in development.',
             mode='PENDING_CREDENTIALS',
             metadata={'status': 'Awaiting user / vendor API key and credentials'},
         )

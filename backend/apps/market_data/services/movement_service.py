@@ -6,7 +6,6 @@ from typing import Optional
 from django.utils import timezone as dj_timezone
 
 from apps.market_data.models.instrument import Instrument
-from apps.market_data.models.market_data_point import MarketDataPoint
 from apps.market_data.models.observation import ObservationStatus, PriceObservation
 
 
@@ -43,6 +42,7 @@ class PriceMovementService:
         price_type: Optional[str] = None,
         currency: Optional[str] = None,
         unit: Optional[str] = None,
+        series_id: Optional[str] = None,
     ) -> PriceMovement:
         if current_price is None or current_price <= Decimal('0'):
             return PriceMovement(
@@ -57,15 +57,17 @@ class PriceMovementService:
         ref_dt = current_dt or dj_timezone.now()
         expected_currency = currency or instrument.currency
 
-        # 1. Look for previous published PriceObservation strictly before ref_dt (excluding superseded)
+        # Look for previous published PriceObservation strictly before ref_dt (excluding superseded)
         obs_qs = (
-            PriceObservation.objects.filter(
+            PriceObservation.objects.using('market_data').filter(
                 instrument=instrument,
                 status=ObservationStatus.PUBLISHED,
                 effective_at__lt=ref_dt,
             )
             .exclude(corrections__status=ObservationStatus.PUBLISHED)
         )
+        if series_id:
+            obs_qs = obs_qs.filter(series_id=series_id)
         if price_type:
             obs_qs = obs_qs.filter(price_type=price_type)
         if unit:
@@ -104,55 +106,15 @@ class PriceMovementService:
                 previous_price=prev_obs.value,
                 previous_effective_at=prev_obs.effective_at,
                 status=MovementStatus.CALCULATED,
-                notes='Calculated from published observations.',
+                notes='Calculated from authoritative published observations.',
             )
 
-        # 2. Fallback to historical MarketDataPoint
-        prev_point = MarketDataPoint.objects.filter(
-            instrument=instrument,
-            timestamp__lt=ref_dt,
-        ).order_by('-timestamp').first()
-
-        if prev_point and prev_point.price and prev_point.price > Decimal('0'):
-            change_amount = current_price - prev_point.price
-            pct_raw = (change_amount / prev_point.price) * Decimal('100')
-            change_percent = pct_raw.quantize(Decimal('0.0001'))
-
-            return PriceMovement(
-                change_amount=change_amount,
-                change_percent=change_percent,
-                previous_price=prev_point.price,
-                previous_effective_at=prev_point.timestamp,
-                status=MovementStatus.CALCULATED,
-                notes='Calculated from market feed data points.',
-            )
-
-        # 3. Check if latest point has provider-calculated change
-        current_point = MarketDataPoint.objects.filter(
-            instrument=instrument,
-            timestamp__lte=ref_dt,
-        ).order_by('-timestamp').first()
-
-        if (
-            current_point
-            and current_point.change_amount is not None
-            and current_point.change_percent is not None
-        ):
-            return PriceMovement(
-                change_amount=current_point.change_amount,
-                change_percent=current_point.change_percent,
-                previous_price=current_price - current_point.change_amount,
-                previous_effective_at=current_point.timestamp,
-                status=MovementStatus.CALCULATED,
-                notes='Supplied by provider quote metadata.',
-            )
-
-        # 4. No previous observation found
+        # No previous authoritative observation found
         return PriceMovement(
             change_amount=None,
             change_percent=None,
             previous_price=None,
             previous_effective_at=None,
             status=MovementStatus.UNAVAILABLE,
-            notes='No eligible prior price observation exists for comparison.',
+            notes='No eligible prior price observation exists for comparison in this series.',
         )

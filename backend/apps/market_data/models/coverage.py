@@ -2,6 +2,7 @@ import uuid
 
 from django.db import models
 
+from apps.market_data.models.common import CrossDbQuerySet
 from apps.market_data.models.instrument import Instrument
 
 
@@ -43,12 +44,14 @@ class InstrumentCoverage(models.Model):
     Enforces distinct cadences, quotation bases, and freshness windows.
     """
 
+    objects = CrossDbQuerySet.as_manager()
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    instrument = models.OneToOneField(
-        Instrument,
-        on_delete=models.CASCADE,
-        related_name='coverage',
+    instrument_id = models.UUIDField(
+        unique=True,
         db_index=True,
+        default=uuid.uuid4,
+        help_text="Canonical Instrument UUID (Primary DB)",
     )
     price_type = models.CharField(
         max_length=32,
@@ -98,5 +101,28 @@ class InstrumentCoverage(models.Model):
             models.Index(fields=['status', 'cadence'], name='cov_status_cad_idx'),
         ]
 
+    def __init__(self, *args, **kwargs):
+        inst = kwargs.pop('instrument', None)
+        super().__init__(*args, **kwargs)
+        if inst is not None:
+            self.instrument_id = getattr(inst, 'id', inst)
+            self._cached_instrument = inst if hasattr(inst, 'id') else None
+
+    @property
+    def instrument(self):
+        if hasattr(self, '_cached_instrument') and self._cached_instrument is not None:
+            return self._cached_instrument
+        if not self.instrument_id:
+            return None
+        self._cached_instrument = Instrument.objects.using('default').filter(id=self.instrument_id).first()
+        return self._cached_instrument
+
+    @instrument.setter
+    def instrument(self, value):
+        self.instrument_id = getattr(value, 'id', value) if value else None
+        self._cached_instrument = value
+
     def __str__(self) -> str:
-        return f"Coverage({self.instrument.symbol} - {self.cadence}:{self.price_type})"
+        inst = self.instrument
+        sym = inst.symbol if inst else str(self.instrument_id)
+        return f"Coverage({sym} - {self.cadence}:{self.price_type})"

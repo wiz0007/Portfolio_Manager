@@ -1,3 +1,4 @@
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -6,7 +7,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
-from django.db import connection, transaction
+from django.db import connection, connections, transaction
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -605,7 +606,8 @@ class TestDashboardFinancialCorrectness:
 @pytest.mark.django_db(transaction=True)
 class TestConcurrencyStabilization:
     def test_watchlist_multithreaded_concurrency(self, canonical_instruments, users):
-        import time
+        if connection.vendor == 'sqlite':
+            pytest.skip("Multi-threaded row lock concurrency tests require PostgreSQL.")
         from apps.watchlists.models import WatchlistItem
 
         inst = canonical_instruments['infy']
@@ -623,8 +625,10 @@ class TestConcurrencyStabilization:
                 except ValidationError as e:
                     errors.append(e)
                     break
-                except Exception as e:
-                    time.sleep(0.02)
+                except Exception:
+                    time.sleep(0.05)
+                finally:
+                    connections['default'].close()
 
         with ThreadPoolExecutor(max_workers=5) as executor:
             list(executor.map(attempt_add, range(5)))
@@ -634,6 +638,8 @@ class TestConcurrencyStabilization:
         assert len(errors) == 4
 
     def test_observation_publication_multithreaded_concurrency(self, canonical_instruments, users):
+        if connection.vendor == 'sqlite':
+            pytest.skip("Multi-threaded row lock concurrency tests require PostgreSQL.")
         inst = canonical_instruments['infy']
         op = users['operator']
         pub = users['publisher']
@@ -651,18 +657,22 @@ class TestConcurrencyStabilization:
         )
 
         successes = []
-        errors = []
 
         def attempt_publish(i):
-            try:
-                with transaction.atomic():
-                    locked = PriceObservation.objects.select_for_update().get(id=obs.id)
-                    locked.publish(pub)
-                    successes.append(locked)
-            except Exception as e:
-                errors.append(e)
-            finally:
-                connection.close()
+            for _ in range(15):
+                try:
+                    with transaction.atomic(using='market_data'):
+                        locked = PriceObservation.objects.select_for_update().get(id=obs.id)
+                        locked.publish(pub)
+                        successes.append(locked)
+                    break
+                except ValidationError:
+                    break
+                except Exception:
+                    time.sleep(0.05)
+                finally:
+                    connections['market_data'].close()
+                    connections['default'].close()
 
         with ThreadPoolExecutor(max_workers=4) as executor:
             list(executor.map(attempt_publish, range(4)))
