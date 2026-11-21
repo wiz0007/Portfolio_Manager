@@ -18,7 +18,6 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 import django
 django.setup()
 
-from django.db import transaction
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 
@@ -28,13 +27,21 @@ from apps.market_data.models.observation import PriceObservation, ObservationSta
 from apps.market_data.models.market_data_point import MarketDataPoint
 from apps.market_data.services.price_resolver import PriceResolver
 
+import time
+
 SSL_CTX = ssl._create_unverified_context()
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
 
-def fetch_url(url: str, timeout: int = 15) -> str:
-    req = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(req, context=SSL_CTX, timeout=timeout) as res:
-        return res.read().decode('utf-8', errors='ignore')
+def fetch_url(url: str, timeout: int = 20) -> str:
+    for attempt in range(4):
+        try:
+            req = urllib.request.Request(url, headers=HEADERS)
+            with urllib.request.urlopen(req, context=SSL_CTX, timeout=timeout) as res:
+                return res.read().decode('utf-8', errors='ignore')
+        except Exception as e:
+            if attempt == 3:
+                raise e
+            time.sleep(1.5)
 
 def main():
     print("=" * 60)
@@ -76,9 +83,9 @@ def main():
         print(f"[WARN] Could not fetch NSE Equity Master: {e}")
         equity_master_map = {}
 
-    # 2. Fetch NSE Bhavcopy (sec_bhavdata_full_18112026.csv)
+    # 2. Fetch NSE Daily Bhavcopy (sec_bhavdata_full_20112026.csv)
     print("\n[2/6] Fetching NSE Daily Bhavcopy...")
-    bhavcopy_dates = ['18112026', '17112026', '14112026', '13112026']
+    bhavcopy_dates = ['20112026', '19112026', '18112026', '17112026']
     bhavcopy_data = {}
     effective_bhavcopy_date = None
 
@@ -248,6 +255,10 @@ def main():
         source_ref: str = 'https://archives.nseindia.com',
         scheme_code: str | None = None,
         effective_time = effective_dt,
+        open_price: Decimal | None = None,
+        high_price: Decimal | None = None,
+        low_price: Decimal | None = None,
+        volume: int | None = None,
     ):
         nonlocal created_instruments, updated_instruments, published_observations
 
@@ -315,18 +326,46 @@ def main():
             }
         )
 
+        from apps.market_data.models.instrument_reference import MarketInstrumentReference
+        from apps.market_data.models.observation import TrustClass
+        ref, _ = MarketInstrumentReference.objects.using('market_data').update_or_create(
+            id=inst.id,
+            defaults={
+                'symbol': inst.symbol,
+                'name': inst.name,
+                'asset_class': inst.asset_class,
+                'product_type': inst.product_type or '',
+                'exchange': inst.exchange or '',
+                'currency': inst.currency or 'INR',
+                'isin': inst.isin,
+                'scheme_code': inst.scheme_code,
+                'is_active': inst.is_active,
+            }
+        )
+
+        t_class = TrustClass.VERIFIED_OFFICIAL if ('OFFICIAL' in source or 'NSE' in source or 'BSE' in source or 'AMFI' in source) else TrustClass.VERIFIED_PERMITTED_SECONDARY
+        o_price = open_price if open_price is not None else price
+        h_price = high_price if high_price is not None else price
+        l_price = low_price if low_price is not None else price
+
         # Price Observation
         obs, obs_created = PriceObservation.objects.update_or_create(
             instrument=inst,
             effective_at=effective_time,
             price_type=price_type,
+            source=source,
             defaults={
+                'instrument_ref': ref,
                 'value': price,
+                'open_price': o_price,
+                'high_price': h_price,
+                'low_price': l_price,
+                'volume': volume,
                 'currency': 'INR',
                 'unit': q_unit,
-                'source': source,
                 'source_reference': source_ref,
                 'status': ObservationStatus.PUBLISHED,
+                'trust_class': t_class,
                 'is_synthetic': False,
                 'recorded_by': admin_user,
                 'published_by': admin_user,
@@ -347,7 +386,11 @@ def main():
             provider=source,
             defaults={
                 'price': price,
+                'open_price': o_price,
+                'high_price': h_price,
+                'low_price': l_price,
                 'close_price': price,
+                'volume': volume,
                 'is_synthetic': False,
             }
         )
@@ -403,6 +446,9 @@ def main():
                 price_type=PriceType.CLOSE,
                 source='NSE_OFFICIAL' if 'Sensex' not in cname else 'BSE_OFFICIAL',
                 source_ref='https://archives.nseindia.com/content/indices',
+                open_price=price_entry.get('open'),
+                high_price=price_entry.get('high'),
+                low_price=price_entry.get('low'),
             )
 
     # --- B. SPECIFIC PRIORITY EQUITIES & SECTOR CHAMPIONS ---
@@ -461,6 +507,10 @@ def main():
                 price_type=PriceType.LTP,
                 source='NSE_OFFICIAL',
                 source_ref=f"https://archives.nseindia.com/products/content/sec_bhavdata_full_{effective_bhavcopy_date}.csv",
+                open_price=bhav.get('open'),
+                high_price=bhav.get('high'),
+                low_price=bhav.get('low'),
+                volume=bhav.get('volume'),
             )
 
     # --- C. BROAD EQUITY COVERAGE (UP TO 400+ ADDITIONAL NSE EQ STOCKS) ---
@@ -483,6 +533,10 @@ def main():
                     price_type=PriceType.LTP,
                     source='NSE_OFFICIAL',
                     source_ref=f"https://archives.nseindia.com/products/content/sec_bhavdata_full_{effective_bhavcopy_date}.csv",
+                    open_price=bhav.get('open'),
+                    high_price=bhav.get('high'),
+                    low_price=bhav.get('low'),
+                    volume=bhav.get('volume'),
                 )
                 broad_count += 1
                 if broad_count >= 350:
@@ -514,6 +568,10 @@ def main():
                 price_type=PriceType.LTP,
                 source='NSE_OFFICIAL',
                 source_ref=f"https://archives.nseindia.com/products/content/sec_bhavdata_full_{effective_bhavcopy_date}.csv",
+                open_price=bhav.get('open'),
+                high_price=bhav.get('high'),
+                low_price=bhav.get('low'),
+                volume=bhav.get('volume'),
             )
 
     # --- E. REITS & INVITS ---
@@ -543,6 +601,10 @@ def main():
                 price_type=PriceType.LTP,
                 source='NSE_OFFICIAL',
                 source_ref=f"https://archives.nseindia.com/products/content/sec_bhavdata_full_{effective_bhavcopy_date}.csv",
+                open_price=bhav.get('open'),
+                high_price=bhav.get('high'),
+                low_price=bhav.get('low'),
+                volume=bhav.get('volume'),
             )
 
     # --- F. SOVEREIGN GOLD BONDS (SGBs) ---
@@ -564,6 +626,10 @@ def main():
                 price_type=PriceType.LTP,
                 source='NSE_OFFICIAL',
                 source_ref=f"https://archives.nseindia.com/products/content/sec_bhavdata_full_{effective_bhavcopy_date}.csv",
+                open_price=bhav.get('open'),
+                high_price=bhav.get('high'),
+                low_price=bhav.get('low'),
+                volume=bhav.get('volume'),
             )
             sgb_count += 1
             if sgb_count >= 25:

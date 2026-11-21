@@ -82,12 +82,12 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='instrumentrequest',
             name='reviewed_by',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='reviewed_instrument_requests', to=settings.AUTH_USER_MODEL),
+            field=models.ForeignKey(blank=True, db_constraint=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='reviewed_instrument_requests', to=settings.AUTH_USER_MODEL),
         ),
         migrations.AlterField(
             model_name='instrumentrequest',
             name='user',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='instrument_requests', to=settings.AUTH_USER_MODEL),
+            field=models.ForeignKey(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='instrument_requests', to=settings.AUTH_USER_MODEL),
         ),
         migrations.AddConstraint(
             model_name='marketdataseries',
