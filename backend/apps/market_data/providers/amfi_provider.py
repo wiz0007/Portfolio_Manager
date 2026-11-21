@@ -1,6 +1,7 @@
 import logging
 import urllib.request
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 
@@ -77,7 +78,8 @@ class AMFIMarketDataProvider(BaseMarketDataProvider):
                             # Date format in AMFI: DD-Mon-YYYY (e.g. 15-Nov-2026)
                             date_str = parts[5].strip()
                             try:
-                                obs_dt = datetime.strptime(date_str, '%d-%b-%Y').replace(tzinfo=timezone.utc)
+                                obs_date = datetime.strptime(date_str, '%d-%b-%Y').date()
+                                obs_dt = datetime(obs_date.year, obs_date.month, obs_date.day, 16, 0, tzinfo=ZoneInfo('Asia/Kolkata')).astimezone(timezone.utc)
                             except Exception:
                                 obs_dt = datetime.now(timezone.utc)
                             return nav_val, obs_dt
@@ -93,7 +95,12 @@ class AMFIMarketDataProvider(BaseMarketDataProvider):
 
         # Check provider mapping if symbol is not purely numeric
         if not scheme_code.isdigit():
-            mapping = instrument.provider_mappings.filter(provider_name='AMFI').first()
+            from apps.market_data.models.provider_mapping import ProviderInstrumentMapping
+            mapping = ProviderInstrumentMapping.objects.using('market_data').filter(
+                instrument_id=instrument.id, provider_name='AMFI', is_primary=True
+            ).first() or ProviderInstrumentMapping.objects.using('market_data').filter(
+                instrument_id=instrument.id, provider_name='AMFI'
+            ).first()
             if mapping:
                 scheme_code = mapping.provider_symbol
 
@@ -111,8 +118,9 @@ class AMFIMarketDataProvider(BaseMarketDataProvider):
                 currency='INR',
             )
 
-        # Fallback to researched development samples only if scheme exists in fallback registry
-        if scheme_code in AMFI_SCHEME_FALLBACKS:
+        # Static NAV anchors are synthetic development fixtures only.
+        from django.conf import settings
+        if getattr(settings, 'MARKET_DATA_PROVIDER_MODE', 'DEMO').upper() == 'DEMO' and scheme_code in AMFI_SCHEME_FALLBACKS:
             fallback = AMFI_SCHEME_FALLBACKS[scheme_code]
             nav = Decimal(fallback['nav'])
             obs_date = datetime.strptime(fallback['date'], '%Y-%m-%d').replace(tzinfo=timezone.utc)
@@ -146,12 +154,20 @@ class AMFIMarketDataProvider(BaseMarketDataProvider):
         )
 
     def health_check(self) -> ProviderHealth:
+        import time
+        started = time.monotonic()
+        available = False
+        message = 'AMFI endpoint is unreachable.'
+        try:
+            req = urllib.request.Request(self.AMFI_NAV_URL, headers={'User-Agent': 'PortfolioManager/1.0'})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                available = response.status == 200
+                message = 'AMFI NAV endpoint responded successfully.' if available else f'AMFI returned HTTP {response.status}.'
+        except Exception as exc:
+            message = f'AMFI health check failed: {exc.__class__.__name__}'
+        latency = round((time.monotonic() - started) * 1000, 2) if available else None
         return ProviderHealth(
-            name=self.provider_name,
-            is_available=True,
-            latency_ms=15.0,
-            last_checked=datetime.now(timezone.utc),
-            message='AMFI NAV provider configured and operational.',
-            mode='PRODUCTION',
-            metadata={'endpoint': self.AMFI_NAV_URL},
+            name=self.provider_name, is_available=available, latency_ms=latency,
+            last_checked=datetime.now(timezone.utc), message=message,
+            mode='PRODUCTION', metadata={'endpoint': self.AMFI_NAV_URL},
         )

@@ -1,5 +1,8 @@
 from decimal import Decimal
 
+from django.core.exceptions import ImproperlyConfigured, ValidationError
+from django.apps import apps
+
 import pytest
 from django.utils import timezone
 from rest_framework import status
@@ -12,6 +15,9 @@ from apps.market_data.models.instrument_reference import MarketInstrumentReferen
 from apps.market_data.models.instrument_request import InstrumentRequest
 from apps.market_data.models.observation import ObservationStatus, PriceObservation
 from apps.market_data.models.series import MarketDataSeries
+from apps.market_data.models.publication_event import MarketDataPublicationEvent
+from apps.market_data.services.price_resolver import PriceResolver, ResolutionStatus
+from config.database.registry import get_model_owner, MODEL_OWNERSHIP
 from apps.market_data.services.sync_service import InstrumentIdentitySyncService
 from apps.portfolios.models import Portfolio
 from apps.users.models import User
@@ -31,7 +37,7 @@ def auth_client(django_user_model):
     return client, user
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=['default', 'market_data'])
 class TestTwoDatabaseArchitecture:
     """
     Validates the Two-Database Architecture and Application-Wide Market Data Integration.
@@ -74,6 +80,11 @@ class TestTwoDatabaseArchitecture:
         relation_allowed = router.allow_relation(user, obs)
         assert relation_allowed is False
 
+        from apps.market_data.models.market_data_point import MarketDataPoint
+        from apps.market_data.models.provider_mapping import ProviderInstrumentMapping
+        assert router.allow_relation(Instrument(), MarketDataPoint()) is False
+        assert router.allow_relation(Instrument(), ProviderInstrumentMapping()) is False
+
     def test_instrument_identity_synchronization(self):
         test_inst = Instrument.objects.create(
             symbol="SYNC_TEST",
@@ -83,6 +94,10 @@ class TestTwoDatabaseArchitecture:
             currency="INR",
             isin="INE999999999",
         )
+
+        # Synchronization is deliberately deferred until the durable outbox worker runs.
+        pending = InstrumentIdentitySyncService.process_pending_sync_events()
+        assert pending['processed'] >= 1
 
         # Verify MarketInstrumentReference was synchronized
         ref = MarketInstrumentReference.objects.filter(id=test_inst.id).first()
@@ -107,6 +122,7 @@ class TestTwoDatabaseArchitecture:
             value=Decimal('2500.00'),
             effective_at=timezone.now(),
             status=ObservationStatus.PUBLISHED,
+            trust_class='VERIFIED_OFFICIAL',
             recorded_by=user,
         )
 
@@ -123,6 +139,75 @@ class TestTwoDatabaseArchitecture:
         assert results['BULK_INST1']['status'] == 'AVAILABLE'
         assert Decimal(results['BULK_INST1']['price']) == Decimal('2500.00')
         assert results['BULK_INST2']['status'] == 'MISSING'
+
+    def test_market_data_models_require_explicit_registry_ownership(self):
+        with pytest.raises(ImproperlyConfigured):
+            get_model_owner('market_data', 'new_unregistered_model')
+
+    def test_every_concrete_market_data_model_has_an_explicit_owner(self):
+        registered = MODEL_OWNERSHIP['market_data']
+        for model in apps.get_app_config('market_data').get_models():
+            assert model._meta.model_name in registered, model._meta.label
+
+    def test_published_observation_has_exact_series_and_outbox_event(self, auth_client):
+        _, user = auth_client
+        instrument = Instrument.objects.create(
+            symbol='SERIES_TEST', name='Series Test', asset_class=AssetClass.EQUITY,
+            exchange='NSE', currency='INR',
+        )
+        observation = PriceObservation.objects.create(
+            instrument_id=instrument.id,
+            value=Decimal('123.4500'),
+            effective_at=timezone.now(),
+            source='TEST_PERMITTED_FEED',
+            status=ObservationStatus.PUBLISHED,
+            trust_class='VERIFIED_PERMITTED_SECONDARY',
+            recorded_by_id=user.id,
+        )
+        assert observation.series_id is not None
+        series = MarketDataSeries.objects.using('market_data').get(pk=observation.series_id)
+        assert series.instrument_id == instrument.id
+        assert series.source == observation.source
+        assert MarketDataPublicationEvent.objects.using('market_data').filter(
+            observation_id=observation.id
+        ).exists()
+        resolved = PriceResolver.resolve_price(instrument, series_id=str(series.id))
+        assert resolved.status == ResolutionStatus.AVAILABLE
+        assert resolved.price == Decimal('123.4500')
+
+    def test_synthetic_observation_never_resolves_as_portfolio_price(self, auth_client):
+        _, user = auth_client
+        instrument = Instrument.objects.create(
+            symbol='SYNTH_TEST', name='Synthetic Test', asset_class=AssetClass.EQUITY,
+            exchange='NSE', currency='INR',
+        )
+        observation = PriceObservation.objects.create(
+            instrument_id=instrument.id, value=Decimal('50.0000'),
+            effective_at=timezone.now(), source='DEMO',
+            status=ObservationStatus.PUBLISHED, trust_class='SYNTHETIC',
+            is_synthetic=True, recorded_by_id=user.id,
+        )
+        resolved = PriceResolver.resolve_price(instrument, series_id=str(observation.series_id))
+        assert resolved.price is None
+        assert resolved.status == ResolutionStatus.SYNTHETIC
+
+    def test_published_observation_cannot_be_mutated(self, auth_client):
+        _, user = auth_client
+        instrument = Instrument.objects.create(
+            symbol='IMMUTABLE_TEST', name='Immutable Test', asset_class=AssetClass.EQUITY,
+            exchange='NSE', currency='INR',
+        )
+        observation = PriceObservation.objects.create(
+            instrument_id=instrument.id, value=Decimal('10.0000'),
+            effective_at=timezone.now(), source='TEST_FEED',
+            status=ObservationStatus.PUBLISHED, trust_class='VERIFIED_PERMITTED_SECONDARY',
+            recorded_by_id=user.id,
+        )
+        with pytest.raises(ValidationError):
+            PriceObservation.objects.using('market_data').filter(pk=observation.pk).update(value=Decimal('11.0000'))
+        observation.value = Decimal('11.0000')
+        with pytest.raises(ValidationError):
+            observation.save(using='market_data')
 
     def test_router_migration_isolation(self):
         router = MarketDataRouter()

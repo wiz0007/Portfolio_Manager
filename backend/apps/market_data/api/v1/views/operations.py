@@ -1,5 +1,6 @@
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time as dt_time, timezone as dt_timezone
+from zoneinfo import ZoneInfo
 
 from django.db import transaction
 from django.http import HttpResponse
@@ -8,6 +9,7 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from core.permissions import IsAuthenticatedAndEmailVerified
 
 from apps.market_data.api.v1.serializers.operations import (
     InstrumentCoverageSerializer,
@@ -46,7 +48,7 @@ class InstrumentRequestViewSet(viewsets.ModelViewSet):
 
     queryset = InstrumentRequest.objects.all().select_related('user', 'matched_instrument')
     serializer_class = InstrumentRequestSerializer
-    permission_classes = [permissions.IsAuthenticated, IsRequestOwnerOrStaff]
+    permission_classes = [IsAuthenticatedAndEmailVerified, IsRequestOwnerOrStaff]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -159,7 +161,7 @@ class InstrumentCoverageViewSet(viewsets.ModelViewSet):
 
     queryset = InstrumentCoverage.objects.all().select_related('instrument')
     serializer_class = InstrumentCoverageSerializer
-    permission_classes = [permissions.IsAuthenticated, IsStaffOrReadOnly]
+    permission_classes = [IsAuthenticatedAndEmailVerified, IsStaffOrReadOnly]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -179,7 +181,7 @@ class MarketDataWorklistViewSet(viewsets.ReadOnlyModelViewSet):
 
     queryset = MarketDataWorklist.objects.all().prefetch_related('items')
     serializer_class = MarketDataWorklistSerializer
-    permission_classes = [permissions.IsAuthenticated, IsMarketDataOperator]
+    permission_classes = [IsAuthenticatedAndEmailVerified, IsMarketDataOperator]
     lookup_field = 'worklist_date'
 
     @action(detail=False, methods=['post'])
@@ -222,7 +224,7 @@ class PriceObservationViewSet(viewsets.ModelViewSet):
 
     queryset = PriceObservation.objects.all()
     serializer_class = PriceObservationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticatedAndEmailVerified]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -274,8 +276,8 @@ class PriceObservationViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[IsMarketDataOperator], url_path='submit-for-review')
     def submit_for_review(self, request, pk=None):
-        with transaction.atomic():
-            obs = PriceObservation.objects.select_for_update().get(pk=pk)
+        with transaction.atomic(using='market_data'):
+            obs = PriceObservation.objects.using('market_data').select_for_update().get(pk=pk)
             if obs.status != ObservationStatus.DRAFT:
                 return Response(
                     {'detail': f"Cannot submit observation in status '{obs.status}' for review. Must be in DRAFT."},
@@ -299,30 +301,25 @@ class PriceObservationViewSet(viewsets.ModelViewSet):
             # 1. Publish observation atomically on market_data
             obs.publish(request.user)
 
-        # 2. Trigger valuation refresh across affected holdings with failure isolation
-        try:
-            refresh_stats = ValuationRefreshService.refresh_holdings_for_instrument(obs.instrument)
-        except Exception as e:
-            refresh_stats = {'error': str(e), 'refreshed_count': 0, 'failed_count': 0}
-
+        # Valuation refresh is performed only by the durable publication outbox worker.
         return Response(
             {
                 'observation': PriceObservationSerializer(obs).data,
-                'valuation_refresh': refresh_stats,
+                'valuation_refresh': {'status': 'QUEUED'},
             },
             status=status.HTTP_200_OK,
         )
 
     @action(detail=True, methods=['post'], permission_classes=[IsMarketDataPublisher])
     def reject(self, request, pk=None):
-        obs = self.get_object()
-        if obs.status == ObservationStatus.PUBLISHED:
-            return Response({'detail': 'Cannot reject an already published observation.'}, status=status.HTTP_400_BAD_REQUEST)
         reason = request.data.get('reason', '').strip()
         if not reason:
             return Response({'detail': 'Rejection reason is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        obs.reject(request.user, reason)
+        with transaction.atomic(using='market_data'):
+            obs = PriceObservation.objects.using('market_data').select_for_update().get(pk=pk)
+            if obs.status == ObservationStatus.PUBLISHED:
+                return Response({'detail': 'Cannot reject an already published observation.'}, status=status.HTTP_400_BAD_REQUEST)
+            obs.reject(request.user, reason)
         return Response(PriceObservationSerializer(obs).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], permission_classes=[IsMarketDataPublisher])
@@ -344,60 +341,49 @@ class PriceObservationViewSet(viewsets.ModelViewSet):
             data = serializer.validated_data
 
             eff_at = data.get('effective_at') or original_obs.effective_at
-            pub_ts = timezone.now()
+            corrected_value = data['value']
+            high_candidates = [v for v in (original_obs.high_price, original_obs.open_price, corrected_value) if v is not None]
+            low_candidates = [v for v in (original_obs.low_price, original_obs.open_price, corrected_value) if v is not None]
+            corrected_high = max(high_candidates) if high_candidates else None
+            corrected_low = min(low_candidates) if low_candidates else None
 
-            # Inherit and increment series monotonic version
+            # The PriceObservation model emits the correction publication event and
+            # increments the series version atomically with this insert.
             series = original_obs.series
-            if series:
-                series.data_version = (series.data_version or 0) + 1
-                series.last_published_at = pub_ts
-                series.save(using='market_data', update_fields=['data_version', 'last_published_at', 'updated_at'])
 
             # Create new correction observation strictly on market_data
             correction_obs = PriceObservation.objects.using('market_data').create(
                 instrument=original_obs.instrument,
                 series=series,
                 price_type=original_obs.price_type,
-                value=data['value'],
+                value=corrected_value,
+                open_price=original_obs.open_price,
+                high_price=corrected_high,
+                low_price=corrected_low,
+                volume=original_obs.volume,
                 currency=original_obs.currency,
                 unit=original_obs.unit,
                 effective_at=eff_at,
-                source=data.get('source', 'MANUAL_CORRECTION'),
+                source=original_obs.source,
                 source_reference=data.get('source_reference', ''),
                 notes=data.get('notes', ''),
-                status=ObservationStatus.PUBLISHED,
+                status=ObservationStatus.DRAFT,
                 trust_class=original_obs.trust_class,
+                is_synthetic=original_obs.is_synthetic,
                 recorded_by=request.user,
-                published_by=request.user,
-                published_at=pub_ts,
                 correction_of=original_obs,
                 correction_reason=data['correction_reason'],
             )
+            correction_obs.status = ObservationStatus.PENDING_REVIEW
+            correction_obs.save(using='market_data', update_fields=['status', 'updated_at'])
+            correction_obs.publish(request.user)
 
-            # Emit durable publication event for secondary outbox
-            from apps.market_data.models.publication_event import MarketDataPublicationEvent
-            MarketDataPublicationEvent.objects.using('market_data').create(
-                observation_id=correction_obs.id,
-                instrument_id=correction_obs.instrument_id,
-                series_id=correction_obs.series_id,
-                effective_at=correction_obs.effective_at,
-                price_type=correction_obs.price_type,
-                value=correction_obs.value,
-                currency=correction_obs.currency,
-                data_version=series.data_version if series else 1,
-            )
-
-        # Trigger valuation refresh with failure isolation outside transaction
-        try:
-            refresh_stats = ValuationRefreshService.refresh_holdings_for_instrument(correction_obs.instrument)
-        except Exception as e:
-            refresh_stats = {'error': str(e), 'refreshed_count': 0, 'failed_count': 0}
-
+        # Correction publication uses the same durable outbox processor as normal publication.
         return Response(
             {
                 'original_id': str(original_obs.id),
                 'correction': PriceObservationSerializer(correction_obs).data,
-                'valuation_refresh': refresh_stats,
+                'valuation_refresh': {'status': 'QUEUED'},
             },
             status=status.HTTP_201_CREATED,
         )
@@ -408,7 +394,7 @@ class PriceImportPreviewView(APIView):
     Validates CSV upload without persistence and returns a preview report with row-level errors.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsMarketDataOperator]
+    permission_classes = [IsAuthenticatedAndEmailVerified, IsMarketDataOperator]
 
     def post(self, request):
         csv_file = request.FILES.get('file')
@@ -417,6 +403,8 @@ class PriceImportPreviewView(APIView):
             csv_content = request.data.get('csv_content')
             filename = request.data.get('filename', 'upload.csv')
         else:
+            if csv_file.size > PriceImportService.MAX_CONTENT_BYTES:
+                return Response({'detail': 'CSV exceeds the 5 MB upload limit.'}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
             try:
                 csv_content = csv_file.read().decode('utf-8-sig')
                 filename = csv_file.name
@@ -435,7 +423,7 @@ class PriceImportCommitView(APIView):
     Commits valid previewed rows as draft PriceObservations using server-persisted batch_id.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsMarketDataOperator]
+    permission_classes = [IsAuthenticatedAndEmailVerified, IsMarketDataOperator]
 
     def post(self, request):
         batch_id = request.data.get('batch_id')
@@ -465,7 +453,7 @@ class DatabaseHealthView(APIView):
     across both Primary and Market Data Storage databases (ERD Section 7.6 and 15).
     """
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticatedAndEmailVerified]
 
     def get(self, request):
         from apps.market_data.models.instrument_reference import MarketInstrumentReference
@@ -501,7 +489,7 @@ class BulkPriceResolverView(APIView):
     returns structured status, provenance, currency, and price.
     """
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticatedAndEmailVerified]
 
     def post(self, request):
         instrument_ids = request.data.get('instrument_ids', [])
@@ -510,6 +498,14 @@ class BulkPriceResolverView(APIView):
                 {'detail': 'instrument_ids must be a non-empty list of UUIDs.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if len(instrument_ids) > 100:
+            return Response({'detail': 'A maximum of 100 instruments can be resolved per request.'}, status=status.HTTP_400_BAD_REQUEST)
+        parsed_ids = {}
+        for raw_id in instrument_ids:
+            try:
+                parsed_ids[str(raw_id)] = uuid.UUID(str(raw_id))
+            except (ValueError, TypeError, AttributeError):
+                continue
 
         as_of_param = request.data.get('as_of')
         as_of_dt = None
@@ -517,22 +513,24 @@ class BulkPriceResolverView(APIView):
             try:
                 if 'T' in str(as_of_param):
                     as_of_dt = datetime.fromisoformat(str(as_of_param).replace('Z', '+00:00'))
+                    if timezone.is_naive(as_of_dt):
+                        as_of_dt = as_of_dt.replace(tzinfo=ZoneInfo('Asia/Kolkata'))
                 else:
                     d = date.fromisoformat(str(as_of_param))
-                    as_of_dt = datetime.combine(d, datetime.max.time(), tzinfo=timezone.utc)
+                    as_of_dt = datetime.combine(d, dt_time.max, tzinfo=ZoneInfo('Asia/Kolkata')).astimezone(dt_timezone.utc)
             except Exception:
                 return Response({'detail': 'Invalid as_of date format.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Retrieve canonical instruments from default database
-        instruments = list(Instrument.objects.filter(id__in=instrument_ids))
+        instruments = list(Instrument.objects.filter(id__in=list(parsed_ids.values())))
         resolved_map = PriceResolver.resolve_prices_bulk(instruments, as_of=as_of_dt)
 
         inst_by_id = {inst.id: inst for inst in instruments}
         results = []
         for iid in instrument_ids:
             try:
-                parsed_id = uuid.UUID(str(iid))
-            except ValueError:
+                parsed_id = parsed_ids[str(iid)]
+            except (KeyError, ValueError, TypeError):
                 results.append({
                     'instrument_id': str(iid),
                     'status': 'INVALID_UUID',
@@ -559,10 +557,13 @@ class BulkPriceResolverView(APIView):
                     'status': resolved.status,
                     'price': str(resolved.price) if resolved.price is not None else None,
                     'price_type': resolved.price_type,
+                    'series_id': resolved.series_id,
+                    'observation_id': resolved.observation_id,
+                    'data_version': resolved.data_version,
                     'currency': resolved.currency,
                     'unit': resolved.unit,
                     'source': resolved.source,
-                    'effective_date': resolved.effective_at.date().isoformat() if resolved.effective_at else None,
+                    'effective_date': resolved.effective_at.astimezone(ZoneInfo('Asia/Kolkata')).date().isoformat() if resolved.effective_at else None,
                     'effective_at': resolved.effective_at.isoformat() if resolved.effective_at else None,
                     'is_synthetic': resolved.is_synthetic,
                     'notes': resolved.notes,
@@ -591,7 +592,7 @@ class PriceResolverView(APIView):
     Exposes published_at, price_type, and age_seconds for data freshness and provenance.
     """
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticatedAndEmailVerified]
 
     def get(self, request, instrument_id):
         try:
@@ -605,14 +606,17 @@ class PriceResolverView(APIView):
             try:
                 if 'T' in as_of_param:
                     as_of_dt = datetime.fromisoformat(as_of_param.replace('Z', '+00:00'))
+                    if timezone.is_naive(as_of_dt):
+                        as_of_dt = as_of_dt.replace(tzinfo=ZoneInfo('Asia/Kolkata'))
                 else:
                     d = date.fromisoformat(as_of_param)
-                    as_of_dt = datetime.combine(d, datetime.max.time(), tzinfo=timezone.utc)
+                    as_of_dt = datetime.combine(d, dt_time.max, tzinfo=ZoneInfo('Asia/Kolkata')).astimezone(dt_timezone.utc)
             except Exception:
                 return Response({'detail': 'Invalid as_of date format.'}, status=status.HTTP_400_BAD_REQUEST)
 
         price_type = request.query_params.get('price_type')
-        resolved = PriceResolver.resolve_price(instrument, as_of=as_of_dt, price_type=price_type)
+        series_id = request.query_params.get('series_id')
+        resolved = PriceResolver.resolve_price(instrument, as_of=as_of_dt, price_type=price_type, series_id=series_id)
 
         return Response(
             {
@@ -621,6 +625,9 @@ class PriceResolverView(APIView):
                 'status': resolved.status,
                 'price': str(resolved.price) if resolved.price is not None else None,
                 'price_type': resolved.price_type,
+                'series_id': resolved.series_id,
+                'observation_id': resolved.observation_id,
+                'data_version': resolved.data_version,
                 'currency': resolved.currency,
                 'unit': resolved.unit,
                 'source': resolved.source,
@@ -641,80 +648,68 @@ class HistoricalCoverageReportView(APIView):
     Shows instrument coverage status, row counts, table/index storage, and plan headroom.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsMarketDataOperator]
+    permission_classes = [IsAuthenticatedAndEmailVerified, IsMarketDataOperator]
 
     def get(self, request):
-        from django.db import connection
+        from django.db import connections
         from django.db.models import Count, Max, Min
 
-        # Total active instruments
         total_instruments = Instrument.objects.filter(status=InstrumentStatus.ACTIVE).count()
-
-        # Observation stats
-        obs_by_inst = (
-            PriceObservation.objects.filter(is_synthetic=False)
-            .values('instrument_id')
-            .annotate(cnt=Count('id'))
+        published_qs = PriceObservation.objects.using('market_data').filter(
+            status=ObservationStatus.PUBLISHED, series_id__isnull=False, is_synthetic=False,
         )
-        complete_count = sum(1 for x in obs_by_inst if x['cnt'] >= 180)
-        partial_count = sum(1 for x in obs_by_inst if 1 < x['cnt'] < 180)
-        single_point_count = sum(1 for x in obs_by_inst if x['cnt'] == 1)
+        obs_by_inst = list(
+            published_qs.values('instrument_id').annotate(cnt=Count('id'))
+        )
+        at_least_180 = sum(1 for row in obs_by_inst if row['cnt'] >= 180)
+        between_2_179 = sum(1 for row in obs_by_inst if 1 < row['cnt'] < 180)
+        one_observation = sum(1 for row in obs_by_inst if row['cnt'] == 1)
         instruments_with_data = len(obs_by_inst)
         no_data_count = max(0, total_instruments - instruments_with_data)
 
-        # Asset class breakdown
         asset_breakdown = list(
             Instrument.objects.filter(status=InstrumentStatus.ACTIVE)
-            .values('asset_class')
-            .annotate(total=Count('id'))
-            .order_by('-total')
+            .values('asset_class').annotate(total=Count('id')).order_by('-total')
         )
-
-        # Trust class distribution
         trust_breakdown = list(
-            PriceObservation.objects.filter(is_synthetic=False)
-            .values('trust_class')
-            .annotate(count=Count('id'))
-            .order_by('-count')
+            published_qs.values('trust_class').annotate(count=Count('id')).order_by('-count')
+        )
+        date_range = published_qs.aggregate(
+            min_date=Min('effective_at'), max_date=Max('effective_at'), total_observations=Count('id')
         )
 
-        # Date range
-        date_range = PriceObservation.objects.filter(is_synthetic=False).aggregate(
-            min_date=Min('effective_at'),
-            max_date=Max('effective_at'),
-            total_observations=Count('id'),
-        )
-
-        # Storage measurements from PostgreSQL
-        table_size = "N/A"
-        index_size = "N/A"
-        total_size = "N/A"
+        table_size = index_size = total_size = database_size = 'N/A'
         try:
-            with connection.cursor() as cursor:
+            with connections['market_data'].cursor() as cursor:
                 cursor.execute("""
                     SELECT
                         pg_size_pretty(pg_relation_size('price_observations')),
                         pg_size_pretty(pg_indexes_size('price_observations')),
-                        pg_size_pretty(pg_total_relation_size('price_observations'))
+                        pg_size_pretty(pg_total_relation_size('price_observations')),
+                        pg_size_pretty(pg_database_size(current_database()))
                 """)
                 row = cursor.fetchone()
                 if row:
-                    table_size, index_size, total_size = row
+                    table_size, index_size, total_size, database_size = row
         except Exception:
+            # SQLite and restricted database roles do not expose PostgreSQL size functions.
             pass
 
+        market_tz = ZoneInfo('Asia/Kolkata')
         return Response({
             'universe': {
                 'total_instruments': total_instruments,
-                'complete_backfill': complete_count,
-                'partial_backfill': partial_count,
-                'single_point_only': single_point_count,
-                'no_historical_data': no_data_count,
+                'at_least_180_published_observations': at_least_180,
+                'between_2_and_179_published_observations': between_2_179,
+                'single_published_observation': one_observation,
+                'no_published_history': no_data_count,
+                'calendar_completeness_verified': False,
+                'note': 'Observation counts are descriptive only; they do not prove expected-session or holiday-aware completeness.',
             },
             'coverage': {
                 'total_observations': date_range['total_observations'],
-                'earliest_date': date_range['min_date'].date().isoformat() if date_range['min_date'] else None,
-                'latest_date': date_range['max_date'].date().isoformat() if date_range['max_date'] else None,
+                'earliest_market_date': date_range['min_date'].astimezone(market_tz).date().isoformat() if date_range['min_date'] else None,
+                'latest_market_date': date_range['max_date'].astimezone(market_tz).date().isoformat() if date_range['max_date'] else None,
                 'trust_distribution': trust_breakdown,
                 'asset_breakdown': asset_breakdown,
             },
@@ -722,10 +717,11 @@ class HistoricalCoverageReportView(APIView):
                 'price_observations_table_size': table_size,
                 'price_observations_index_size': index_size,
                 'price_observations_total_size': total_size,
-                'neon_plan_limit': '500 MB (Free Tier)',
-                'neon_headroom_estimate': 'Over 400 MB available',
+                'market_data_database_size': database_size,
+                'plan_limit_and_headroom': 'Not inferred; check the active Neon plan and usage dashboard.',
             },
         }, status=status.HTTP_200_OK)
+
 
 
 class HistoricalBackfillTriggerView(APIView):
@@ -733,7 +729,7 @@ class HistoricalBackfillTriggerView(APIView):
     Operator action to trigger on-demand historical backfill for an instrument.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsMarketDataOperator]
+    permission_classes = [IsAuthenticatedAndEmailVerified, IsMarketDataPublisher]
 
     def post(self, request):
         from apps.market_data.services.backfill_service import HistoricalBackfillService
@@ -750,7 +746,14 @@ class HistoricalBackfillTriggerView(APIView):
         if not inst:
             return Response({'detail': 'Instrument not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+        try:
+            target_days = int(request.data.get('target_days', 1825))
+        except (TypeError, ValueError):
+            return Response({'detail': 'target_days must be an integer.'}, status=status.HTTP_400_BAD_REQUEST)
+        if target_days < 1 or target_days > 1825:
+            return Response({'detail': 'target_days must be between 1 and 1825.'}, status=status.HTTP_400_BAD_REQUEST)
+
         service = HistoricalBackfillService(publisher=request.user)
-        result = service.backfill_instrument(inst, target_days=365)
+        result = service.backfill_instrument(inst, target_days=target_days)
         return Response(result, status=status.HTTP_200_OK if result['status'] == 'SUCCESS' else status.HTTP_400_BAD_REQUEST)
 

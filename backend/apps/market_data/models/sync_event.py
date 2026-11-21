@@ -34,6 +34,9 @@ class InstrumentSyncEvent(models.Model):
     class Meta:
         db_table = 'instrument_sync_events'
         ordering = ['created_at']
+        constraints = [
+            models.UniqueConstraint(fields=['instrument_id', 'identity_version'], name='uniq_instrument_sync_version'),
+        ]
         indexes = [
             models.Index(fields=['status', 'created_at'], name='sync_status_created_idx'),
             models.Index(fields=['instrument_id', 'identity_version'], name='sync_inst_ver_idx'),

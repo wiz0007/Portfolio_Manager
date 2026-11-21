@@ -1,7 +1,6 @@
 from rest_framework import serializers
 
 from apps.market_data.models.instrument import Instrument
-from apps.market_data.models.market_data_point import MarketDataPoint
 from apps.market_data.models.provider_mapping import ProviderInstrumentMapping
 from apps.market_data.models.reference_data import InstrumentReferenceData
 
@@ -26,30 +25,26 @@ class InstrumentReferenceDataSerializer(serializers.ModelSerializer):
         ]
 
 
-class QuoteSerializer(serializers.ModelSerializer):
+class QuoteSerializer(serializers.Serializer):
     symbol = serializers.CharField(source='instrument.symbol', read_only=True)
-    currency = serializers.CharField(source='instrument.currency', read_only=True)
 
-    class Meta:
-        model = MarketDataPoint
-        fields = [
-            'id',
-            'instrument_id',
-            'symbol',
-            'price',
-            'open_price',
-            'high_price',
-            'low_price',
-            'close_price',
-            'volume',
-            'change_amount',
-            'change_percent',
-            'provider',
-            'is_synthetic',
-            'interval',
-            'currency',
-            'timestamp',
-        ]
+    id = serializers.CharField(allow_null=True)
+    instrument_id = serializers.CharField()
+    price = serializers.DecimalField(max_digits=18, decimal_places=4, allow_null=True)
+    open_price = serializers.DecimalField(max_digits=18, decimal_places=4, allow_null=True)
+    high_price = serializers.DecimalField(max_digits=18, decimal_places=4, allow_null=True)
+    low_price = serializers.DecimalField(max_digits=18, decimal_places=4, allow_null=True)
+    close_price = serializers.DecimalField(max_digits=18, decimal_places=4, allow_null=True)
+    volume = serializers.IntegerField(allow_null=True)
+    change_amount = serializers.DecimalField(max_digits=18, decimal_places=4, allow_null=True)
+    change_percent = serializers.DecimalField(max_digits=8, decimal_places=4, allow_null=True)
+    provider = serializers.CharField()
+    is_synthetic = serializers.BooleanField()
+    interval = serializers.CharField()
+    timestamp = serializers.DateTimeField(allow_null=True)
+    currency = serializers.CharField()
+    status = serializers.CharField()
+    notes = serializers.CharField(allow_blank=True)
 
 
 class InstrumentSerializer(serializers.ModelSerializer):
@@ -74,25 +69,27 @@ class InstrumentSerializer(serializers.ModelSerializer):
         ]
 
     def get_latest_quote(self, obj: Instrument):
-        quote = obj.latest_quote
-        if quote:
-            return QuoteSerializer(quote).data
-        return None
-
-
-class HistoricalPointSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = MarketDataPoint
-        fields = [
-            'timestamp',
-            'price',
-            'open_price',
-            'high_price',
-            'low_price',
-            'close_price',
-            'volume',
-            'change_amount',
-            'change_percent',
-            'interval',
-            'is_synthetic',
-        ]
+        resolved_map = self.context.get('resolved_prices', {})
+        resolved = resolved_map.get(obj.id)
+        if resolved is None:
+            quote = obj.latest_quote
+            return QuoteSerializer(quote).data if quote else None
+        if resolved.price is None:
+            return {
+                'instrument_id': str(obj.id), 'symbol': obj.symbol,
+                'price': None, 'currency': resolved.currency,
+                'status': resolved.status, 'source': resolved.source,
+                'is_synthetic': resolved.is_synthetic, 'notes': resolved.notes,
+            }
+        return {
+            'id': resolved.observation_id,
+            'instrument_id': str(obj.id), 'symbol': obj.symbol,
+            'price': str(resolved.price), 'open_price': None, 'high_price': None,
+            'low_price': None, 'close_price': str(resolved.price), 'volume': None,
+            'change_amount': None, 'change_percent': None,
+            'provider': resolved.source, 'is_synthetic': resolved.is_synthetic,
+            'interval': '1D', 'timestamp': resolved.effective_at,
+            'currency': resolved.currency, 'status': resolved.status,
+            'notes': resolved.notes, 'series_id': resolved.series_id,
+            'observation_id': resolved.observation_id, 'data_version': resolved.data_version,
+        }

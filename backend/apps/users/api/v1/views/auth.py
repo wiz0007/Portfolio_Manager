@@ -6,6 +6,7 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
+from django.conf import settings
 from rest_framework.views import APIView
 
 from apps.users.api.v1.serializers import (
@@ -70,8 +71,9 @@ class RegisterView(APIView):
         # Send verification email asynchronously / via email backend
         EmailVerificationService.send_verification_email(user)
 
-        # Establish session upon registration
-        AuthService.login_user(request, user)
+        # In production, registration does not create an authenticated session before verification.
+        if not getattr(settings, 'REQUIRE_VERIFIED_EMAIL_FOR_API', False):
+            AuthService.login_user(request, user)
 
         return Response(
             {
@@ -105,6 +107,11 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
+        if getattr(settings, 'REQUIRE_VERIFIED_EMAIL_FOR_API', False) and not user.is_email_verified:
+            return Response(
+                {'detail': 'Verify your email address before logging in.', 'code': 'email_not_verified'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         AuthService.login_user(request, user)
 

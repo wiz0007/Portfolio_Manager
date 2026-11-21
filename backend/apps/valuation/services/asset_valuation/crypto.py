@@ -67,7 +67,6 @@ class CryptoValuationStrategy(BaseAssetValuationStrategy):
                 if resolved.price is not None and resolved.status in (
                     ResolutionStatus.AVAILABLE,
                     ResolutionStatus.STALE,
-                    ResolutionStatus.SYNTHETIC,
                 ):
                     market_price = resolved.price
                     source_name = resolved.source or 'MANUAL_VERIFIED'

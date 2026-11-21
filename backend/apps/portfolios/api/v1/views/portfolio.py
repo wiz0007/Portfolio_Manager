@@ -1,6 +1,7 @@
 from drf_spectacular.utils import OpenApiResponse, extend_schema
-from rest_framework import generics
-from rest_framework.permissions import IsAuthenticated
+from rest_framework import generics, status
+from rest_framework.response import Response
+from core.permissions import IsAuthenticatedAndEmailVerified as IsAuthenticated
 
 from apps.portfolios.api.v1.serializers import PortfolioSerializer
 from apps.portfolios.models import Portfolio
@@ -93,4 +94,10 @@ class PortfolioDetailView(generics.RetrieveUpdateDestroyAPIView):
         tags=["Portfolios"],
     )
     def delete(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.investments.exists() or instance.investment_transactions.exists():
+            return Response(
+                {'detail': 'A portfolio containing investments or financial transactions cannot be deleted. Archive functionality must be used instead.'},
+                status=status.HTTP_409_CONFLICT,
+            )
         return super().delete(request, *args, **kwargs)

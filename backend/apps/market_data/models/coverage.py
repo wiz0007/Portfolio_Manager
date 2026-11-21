@@ -50,7 +50,6 @@ class InstrumentCoverage(models.Model):
     instrument_id = models.UUIDField(
         unique=True,
         db_index=True,
-        default=uuid.uuid4,
         help_text="Canonical Instrument UUID (Primary DB)",
     )
     price_type = models.CharField(

@@ -11,7 +11,7 @@ class Command(BaseCommand):
         parser.add_argument('--symbols', type=str, help='Comma-separated list of symbols to backfill')
         parser.add_argument('--asset-class', type=str, help='Filter by asset class (EQUITY, INDEX, MUTUAL_FUND, COMMODITY, etc.)')
         parser.add_argument('--limit', type=int, default=0, help='Maximum number of instruments to process (0 = all)')
-        parser.add_argument('--target-days', type=int, default=365, help='Target days of history (default: 365)')
+        parser.add_argument('--target-days', type=int, default=1825, help='Target days of history (default: 1825 / approximately five years)')
 
     def handle(self, *args, **options):
         self.stdout.write("=" * 65)
@@ -36,7 +36,7 @@ class Command(BaseCommand):
         else:
             self.stdout.write(f"Processing all {total} eligible instruments...")
 
-        target_days = options.get('target_days', 365)
+        target_days = options.get('target_days', 1825)
         success_count = 0
         skipped_count = 0
         failed_count = 0

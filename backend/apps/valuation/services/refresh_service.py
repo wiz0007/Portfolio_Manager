@@ -2,6 +2,7 @@ import logging
 from typing import Any, Dict, List
 
 from django.utils import timezone
+from django.db import models
 
 from apps.assets.models.investment import Investment
 from apps.market_data.models.instrument import Instrument
@@ -23,7 +24,7 @@ class ValuationRefreshService:
     """
 
     @classmethod
-    def refresh_holdings_for_instrument(cls, instrument: Instrument) -> Dict[str, Any]:
+    def refresh_holdings_for_instrument(cls, instrument: Instrument, event_id: str = None) -> Dict[str, Any]:
         """
         Finds all investments linked to the instrument, recalculates valuation using the authoritative
         asset valuation strategy, and records snapshots on Primary Database ('default').
@@ -36,11 +37,19 @@ class ValuationRefreshService:
 
         for inv in investments:
             try:
-                snapshot = ValuationOrchestrator.calculate_and_record(inv, user=inv.user)
+                snapshot = ValuationOrchestrator.calculate_and_record(
+                    inv, user=inv.user, idempotency_key=event_id
+                )
                 if snapshot:
                     refreshed += 1
                 else:
-                    logger.info("Valuation recalculation returned no snapshot for investment %s", inv.id)
+                    failed += 1
+                    err_msg = (
+                        f'No valuation snapshot was produced for investment {inv.id}; '
+                        'market data may be missing, stale, synthetic, unverified or incompatible.'
+                    )
+                    logger.warning(err_msg)
+                    errors.append(err_msg)
             except Exception as e:
                 failed += 1
                 err_msg = f"Failed to refresh investment {inv.id} for user {inv.user_id}: {e!s}"
@@ -64,32 +73,54 @@ class ValuationRefreshService:
 
     @classmethod
     def process_pending_publication_events(cls, limit: int = 50) -> Dict[str, int]:
+        """Process publication events with retry-safe, per-event idempotency.
+
+        A partially failed holding refresh is NOT acknowledged. Successful holding
+        snapshots carry the event UUID as an idempotency key, so retrying the event
+        does not create duplicate snapshots for already-refreshed holdings.
         """
-        Processes pending publication outbox events from the Market Data Storage Database,
-        recalculating valuations on the Primary Database idempotently.
-        """
-        events = list(
+        from django.db import transaction
+
+        event_ids = list(
             MarketDataPublicationEvent.objects.using('market_data')
             .filter(status__in=[PublicationEventStatus.PENDING, PublicationEventStatus.FAILED])
-            .order_by('created_at')[:limit]
+            .order_by('created_at').values_list('id', flat=True)[:limit]
         )
-        processed = 0
-        failed = 0
-
-        for event in events:
+        processed = failed = 0
+        for event_id in event_ids:
             try:
-                event.attempts += 1
-                inst = Instrument.objects.using('default').filter(id=event.instrument_id).first()
-                if inst:
-                    cls.refresh_holdings_for_instrument(inst)
-                event.status = PublicationEventStatus.PROCESSED
-                event.processed_at = timezone.now()
-                event.save(using='market_data', update_fields=['status', 'processed_at', 'attempts'])
+                with transaction.atomic(using='market_data'):
+                    event = (
+                        MarketDataPublicationEvent.objects.using('market_data')
+                        .select_for_update().get(pk=event_id)
+                    )
+                    if event.status == PublicationEventStatus.PROCESSED:
+                        continue
+                    event.attempts += 1
+                    instrument = Instrument.objects.using('default').filter(id=event.instrument_id).first()
+                    if instrument is None:
+                        raise RuntimeError(
+                            f'Canonical instrument {event.instrument_id} is missing; publication event cannot be applied.'
+                        )
+                    stats = cls.refresh_holdings_for_instrument(instrument, event_id=str(event.id))
+                    if stats['failed_count']:
+                        raise RuntimeError(
+                            f"{stats['failed_count']} of {stats['total_holdings']} holding refreshes failed: "
+                            + '; '.join(stats.get('errors', [])[:5])
+                        )
+                    event.status = PublicationEventStatus.PROCESSED
+                    event.processed_at = timezone.now()
+                    event.last_error = ''
+                    event.save(using='market_data', update_fields=[
+                        'status', 'processed_at', 'last_error', 'attempts'
+                    ])
                 processed += 1
-            except Exception as e:
-                event.status = PublicationEventStatus.FAILED
-                event.last_error = str(e)
-                event.save(using='market_data', update_fields=['status', 'last_error', 'attempts'])
+            except Exception as exc:
+                MarketDataPublicationEvent.objects.using('market_data').filter(pk=event_id).update(
+                    status=PublicationEventStatus.FAILED,
+                    attempts=models.F('attempts') + 1,
+                    last_error=str(exc)[:4000],
+                )
+                logger.exception('Publication event %s failed and will be retried', event_id)
                 failed += 1
-
         return {'processed': processed, 'failed': failed}

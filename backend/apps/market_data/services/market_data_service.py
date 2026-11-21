@@ -1,198 +1,130 @@
 import logging
-from datetime import date, datetime, timedelta, timezone
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
-from django.conf import settings
-from django.db import transaction
+from django.core.exceptions import ValidationError
 
 from apps.market_data.models.instrument import Instrument
-from apps.market_data.models.market_data_point import MarketDataPoint
-from apps.market_data.providers.registry import provider_registry
+from apps.market_data.services.history_service import MarketHistoryService
+from apps.market_data.services.movement_service import PriceMovementService
+from apps.market_data.services.price_resolver import PriceResolver, ResolutionStatus
 
 logger = logging.getLogger(__name__)
 
 
-class MarketDataService:
-    """
-    Core service for managing, persisting, caching, and serving financial market data.
-    """
+@dataclass
+class ResolvedQuote:
+    id: Optional[str]
+    instrument_id: str
+    instrument: Instrument
+    price: Optional[Decimal]
+    open_price: Optional[Decimal]
+    high_price: Optional[Decimal]
+    low_price: Optional[Decimal]
+    close_price: Optional[Decimal]
+    volume: Optional[int]
+    change_amount: Optional[Decimal]
+    change_percent: Optional[Decimal]
+    provider: str
+    is_synthetic: bool
+    interval: str
+    timestamp: Optional[datetime]
+    currency: str
+    status: str
+    notes: str = ''
 
-    FRESHNESS_MINUTES = 15
+
+class MarketDataService:
+    """Compatibility facade over the authoritative PriceObservation resolver."""
 
     @classmethod
-    def is_fresh(cls, point: Optional[MarketDataPoint]) -> bool:
+    def is_fresh(cls, point) -> bool:
         if not point or not point.timestamp:
             return False
-        now_utc = datetime.now(timezone.utc)
-        # Future timestamps are never fresh (MKT-004)
-        if point.timestamp > now_utc + timedelta(seconds=60):
-            return False
-
-        # Separate policy for Mutual Funds and Daily EOD NAV vs Intraday quotes (MKT-005, MKT-006)
-        inst = getattr(point, 'instrument', None)
-        if (inst and inst.asset_class == 'MUTUAL_FUND') or point.interval == '1D':
-            return (now_utc.date() == point.timestamp.date()) or ((now_utc - point.timestamp) <= timedelta(hours=24))
-
-        return (now_utc - point.timestamp) <= timedelta(minutes=cls.FRESHNESS_MINUTES)
+        return point.timestamp <= datetime.now(timezone.utc)
 
     @classmethod
-    def get_latest_quote(
-        cls,
-        instrument: Instrument,
-        force_refresh: bool = False,
-    ) -> MarketDataPoint:
-        """
-        Retrieves the latest quote for the instrument.
-        If fresh quote exists in DB and force_refresh is False, returns DB quote.
-        Otherwise fetches normalized quote from provider and persists it.
-        """
-        latest = instrument.latest_quote
-        if latest and not force_refresh and cls.is_fresh(latest):
-            return latest
-
-        provider = provider_registry.get_provider_for_instrument(instrument)
-        quote_data = provider.get_quote(instrument)
-
-        # Save to database
-        point = cls.persist_quote(instrument, quote_data)
-        return point
-
-    @classmethod
-    @transaction.atomic
-    def persist_quote(cls, instrument: Instrument, quote_data) -> MarketDataPoint:
-        """Saves a normalized quote to MarketDataPoint."""
-        # Use update_or_create on unique tuple: (instrument, timestamp, interval, provider)
-        point, _ = MarketDataPoint.objects.update_or_create(
-            instrument=instrument,
-            timestamp=quote_data.timestamp,
-            interval='1D',
-            provider=quote_data.provider,
-            defaults={
-                'price': quote_data.price,
-                'open_price': quote_data.open_price,
-                'high_price': quote_data.high_price,
-                'low_price': quote_data.low_price,
-                'close_price': quote_data.close_price,
-                'volume': quote_data.volume,
-                'change_amount': quote_data.change_amount,
-                'change_percent': quote_data.change_percent,
-                'is_synthetic': quote_data.is_synthetic,
-            },
+    def get_latest_quote(cls, instrument: Instrument, force_refresh: bool = False) -> ResolvedQuote:
+        # Provider responses are not silently promoted to published observations.
+        resolved = PriceResolver.resolve_price(instrument)
+        movement = PriceMovementService.calculate_movement(
+            instrument=instrument, current_price=resolved.price,
+            current_dt=resolved.effective_at, price_type=resolved.price_type,
+            currency=resolved.currency, unit=resolved.unit, series_id=resolved.series_id,
         )
-        return point
-
-    @classmethod
-    def get_history(
-        cls,
-        instrument: Instrument,
-        start_date: date,
-        end_date: date,
-        interval: str = '1D',
-    ) -> List[MarketDataPoint]:
-        """
-        Retrieves historical timeseries for an instrument.
-        Populates missing ranges via provider if needed.
-        """
-        start_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
-        end_dt = datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc)
-
-        existing = list(
-            MarketDataPoint.objects.filter(
-                instrument=instrument,
-                interval=interval,
-                timestamp__gte=start_dt,
-                timestamp__lte=end_dt,
-            ).order_by('timestamp')
+        return ResolvedQuote(
+            id=resolved.observation_id, instrument_id=str(instrument.id), instrument=instrument,
+            price=resolved.price, open_price=None, high_price=None, low_price=None,
+            close_price=resolved.price, volume=None,
+            change_amount=movement.change_amount, change_percent=movement.change_percent,
+            provider=resolved.source, is_synthetic=resolved.is_synthetic,
+            interval='1D', timestamp=resolved.effective_at, currency=resolved.currency,
+            status=resolved.status, notes=resolved.notes,
         )
 
-        # If data is empty or sparse, fetch from provider if historical capability is supported
-        provider = provider_registry.get_provider_for_instrument(instrument)
-        if not getattr(provider.capabilities, 'historical', False):
-            return existing
+    @classmethod
+    def persist_quote(cls, instrument: Instrument, quote_data):
+        raise ValidationError(
+            'Direct MarketDataPoint quote persistence is deprecated. '
+            'Create a PriceObservation through the review and publication workflow.'
+        )
 
-        if len(existing) < 5:
-            # Strictly prevent generating synthetic demo points for real non-synthetic instruments
-            is_testing = getattr(settings, 'TESTING', False)
-            if not is_testing and getattr(provider, 'provider_name', '') == 'DEMO' and not getattr(instrument, 'is_synthetic', False):
-                return existing
-
-            points = provider.get_history(instrument, start_date, end_date, interval)
-
-            with transaction.atomic():
-                for p in points:
-                    MarketDataPoint.objects.update_or_create(
-                        instrument=instrument,
-                        timestamp=p.timestamp,
-                        interval=interval,
-                        provider=provider.provider_name,
-                        defaults={
-                            'price': p.price,
-                            'open_price': p.open_price,
-                            'high_price': p.high_price,
-                            'low_price': p.low_price,
-                            'close_price': p.close_price,
-                            'volume': p.volume,
-                            'change_amount': p.change_amount,
-                            'change_percent': p.change_percent,
-                            'is_synthetic': getattr(provider, 'provider_name', '') == 'DEMO',
-                        },
-                    )
-
-            existing = list(
-                MarketDataPoint.objects.filter(
-                    instrument=instrument,
-                    interval=interval,
-                    timestamp__gte=start_dt,
-                    timestamp__lte=end_dt,
-                ).order_by('timestamp')
-            )
-
-        return existing
+    @classmethod
+    def get_history(cls, instrument: Instrument, start_date: date, end_date: date, interval: str = '1D') -> List[Any]:
+        result = MarketHistoryService.get_history(
+            instrument=instrument, start_date=start_date, end_date=end_date, interval=interval
+        )
+        return result.points
 
     @classmethod
     def get_market_overview(cls) -> Dict[str, Any]:
-        """Provides high-level market summary for dashboard overview."""
-        indices = Instrument.objects.filter(asset_class='INDEX', is_active=True)[:5]
-        equities = Instrument.objects.filter(asset_class='EQUITY', is_active=True)[:8]
-        mutual_funds = Instrument.objects.filter(asset_class='MUTUAL_FUND', is_active=True)[:6]
+        indices = list(Instrument.objects.filter(asset_class='INDEX', is_active=True)[:5])
+        equities = list(Instrument.objects.filter(asset_class='EQUITY', is_active=True)[:8])
+        mutual_funds = list(Instrument.objects.filter(asset_class='MUTUAL_FUND', is_active=True)[:6])
+        all_instruments = indices + equities + mutual_funds
+        resolved_map = PriceResolver.resolve_prices_bulk(all_instruments)
+        movement_map = PriceMovementService.calculate_movements_bulk(resolved_map)
 
-        def format_inst(inst: Instrument):
+        def format_inst(inst):
+            resolved = resolved_map.get(inst.id)
+            movement = movement_map.get(inst.id)
+            available = bool(resolved and resolved.price is not None)
+            return {
+                'id': str(inst.id), 'symbol': inst.symbol, 'name': inst.name,
+                'asset_class': inst.asset_class, 'exchange': inst.exchange,
+                'price': str(resolved.price) if available else 'N/A',
+                'change_amount': str(movement.change_amount) if movement and movement.change_amount is not None else '0.0000',
+                'change_percent': str(movement.change_percent) if movement and movement.change_percent is not None else '0.0000',
+                'is_synthetic': bool(resolved and resolved.is_synthetic),
+                'timestamp': resolved.effective_at.isoformat() if resolved and resolved.effective_at else None,
+                'status': resolved.status if resolved else 'UNAVAILABLE',
+                'series_id': resolved.series_id if resolved else None,
+                'observation_id': resolved.observation_id if resolved else None,
+                'data_version': resolved.data_version if resolved else None,
+                'currency': resolved.currency if resolved else inst.currency,
+                'unit': resolved.unit if resolved else None,
+            }
+
+        def safe_format(inst):
             try:
-                quote = cls.get_latest_quote(inst)
-                return {
-                    'id': str(inst.id),
-                    'symbol': inst.symbol,
-                    'name': inst.name,
-                    'asset_class': inst.asset_class,
-                    'exchange': inst.exchange,
-                    'price': str(quote.price),
-                    'change_amount': str(quote.change_amount) if quote.change_amount is not None else '0.0000',
-                    'change_percent': str(quote.change_percent) if quote.change_percent is not None else '0.0000',
-                    'is_synthetic': quote.is_synthetic,
-                    'timestamp': quote.timestamp.isoformat(),
-                    'status': 'SUCCESS',
-                }
+                return format_inst(inst)
             except Exception as exc:
-                logger.warning("Failed to fetch quote for overview instrument %s: %s", inst.symbol, exc)
+                logger.warning('Market overview resolution failed for %s: %s', inst.symbol, exc)
                 return {
-                    'id': str(inst.id),
-                    'symbol': inst.symbol,
-                    'name': inst.name,
-                    'asset_class': inst.asset_class,
-                    'exchange': inst.exchange,
-                    'price': 'N/A',
-                    'change_amount': '0.0000',
-                    'change_percent': '0.0000',
-                    'is_synthetic': False,
-                    'timestamp': datetime.now(timezone.utc).isoformat(),
-                    'status': 'UNAVAILABLE',
-                    'error': str(exc),
+                    'id': str(inst.id), 'symbol': inst.symbol, 'name': inst.name,
+                    'asset_class': inst.asset_class, 'exchange': inst.exchange,
+                    'price': 'N/A', 'change_amount': '0.0000', 'change_percent': '0.0000',
+                    'is_synthetic': False, 'timestamp': None, 'status': 'UNAVAILABLE',
                 }
 
+        from django.conf import settings
         return {
-            'indices': [format_inst(i) for i in indices],
-            'equities': [format_inst(e) for e in equities],
-            'mutual_funds': [format_inst(m) for m in mutual_funds],
-            'is_demo_mode': getattr(settings, 'MARKET_DATA_PROVIDER_MODE', 'DEMO') == 'DEMO',
-            'demo_notice': 'DEMO DATA — Synthetic prices, not live market quotations.',
+            'indices': [safe_format(i) for i in indices],
+            'equities': [safe_format(i) for i in equities],
+            'mutual_funds': [safe_format(i) for i in mutual_funds],
+            'is_demo_mode': getattr(settings, 'MARKET_DATA_PROVIDER_MODE', 'DEMO').upper() == 'DEMO',
+            'demo_notice': 'DEMO DATA — Synthetic prices, not live market quotations.'
+                if getattr(settings, 'MARKET_DATA_PROVIDER_MODE', 'DEMO').upper() == 'DEMO' else '',
         }

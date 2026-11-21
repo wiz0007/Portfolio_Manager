@@ -1,7 +1,7 @@
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from core.permissions import IsAuthenticatedAndEmailVerified as IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 

@@ -181,6 +181,7 @@ class PriceObservationSerializer(serializers.ModelSerializer):
             'instrument',
             'symbol',
             'instrument_name',
+            'series',
             'price_type',
             'value',
             'currency',
@@ -191,6 +192,7 @@ class PriceObservationSerializer(serializers.ModelSerializer):
             'notes',
             'status',
             'is_synthetic',
+            'trust_class',
             'recorded_by',
             'recorded_by_email',
             'published_by',
@@ -203,9 +205,12 @@ class PriceObservationSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
         validators = []
+        extra_kwargs = {'series': {'required': True}}
         read_only_fields = [
             'id',
             'status',
+            'is_synthetic',
+            'trust_class',
             'recorded_by',
             'published_by',
             'published_at',

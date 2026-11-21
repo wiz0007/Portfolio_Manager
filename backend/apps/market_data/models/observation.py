@@ -1,5 +1,7 @@
 import uuid
+from zoneinfo import ZoneInfo
 from decimal import Decimal
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -39,12 +41,11 @@ class PriceObservation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     instrument_id = models.UUIDField(
         db_index=True,
-        default=uuid.uuid4,
         help_text="Canonical Instrument UUID (Primary DB)",
     )
     instrument_ref = models.ForeignKey(
         'market_data.MarketInstrumentReference',
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name='observations',
@@ -100,7 +101,7 @@ class PriceObservation(models.Model):
     trust_class = models.CharField(
         max_length=32,
         choices=TrustClass.choices,
-        default=TrustClass.VERIFIED_OFFICIAL,
+        default=TrustClass.UNVERIFIED,
         db_index=True,
     )
     is_synthetic = models.BooleanField(
@@ -142,9 +143,9 @@ class PriceObservation(models.Model):
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=['instrument_id', 'effective_at', 'price_type', 'source'],
+                fields=['instrument_id', 'series', 'effective_at', 'price_type', 'source'],
                 condition=models.Q(status=ObservationStatus.PUBLISHED),
-                name='uniq_published_obs',
+                name='uniq_published_obs_series',
             )
         ]
 
@@ -215,13 +216,123 @@ class PriceObservation(models.Model):
             raise ValidationError({'value': 'Price observation value must be strictly positive.'})
         if self.open_price is not None and self.open_price <= Decimal('0'):
             raise ValidationError({'open_price': 'Open price must be positive.'})
-        if self.high_price is not None and self.low_price is not None:
-            if self.high_price < self.low_price:
-                raise ValidationError({'high_price': 'High price cannot be lower than Low price.'})
-        if self.effective_at and self.effective_at > timezone.now() + timezone.timedelta(minutes=5):
+        if self.low_price is not None and self.high_price is not None and self.high_price < self.low_price:
+            raise ValidationError({'high_price': 'High price cannot be lower than Low price.'})
+        if self.open_price is not None and self.high_price is not None and self.open_price > self.high_price:
+            raise ValidationError({'open_price': 'Open price cannot exceed High price.'})
+        if self.open_price is not None and self.low_price is not None and self.open_price < self.low_price:
+            raise ValidationError({'open_price': 'Open price cannot be below Low price.'})
+        if self.value is not None and self.high_price is not None and self.value > self.high_price:
+            raise ValidationError({'value': 'Close/value cannot exceed High price.'})
+        if self.value is not None and self.low_price is not None and self.value < self.low_price:
+            raise ValidationError({'value': 'Close/value cannot be below Low price.'})
+        if self.volume is not None and self.volume < 0:
+            raise ValidationError({'volume': 'Volume cannot be negative.'})
+        if not self.currency or not self.unit or not self.source:
+            raise ValidationError('Currency, quotation unit and source are required.')
+        if self.effective_at and self.effective_at > timezone.now() + timedelta(minutes=5):
             raise ValidationError({'effective_at': 'Effective timestamp cannot be in the future.'})
+        if self.is_synthetic and self.trust_class != TrustClass.SYNTHETIC:
+            raise ValidationError({'trust_class': 'Synthetic observations must use SYNTHETIC trust class.'})
         if self.correction_of and not self.correction_reason:
             raise ValidationError({'correction_reason': 'Correction reason is required when correcting an observation.'})
+        if self.series_id:
+            series = self.series
+            if series:
+                mismatches = {}
+                if series.instrument_id != self.instrument_id:
+                    mismatches['series'] = 'Selected series belongs to a different canonical instrument.'
+                if series.price_type != self.price_type:
+                    mismatches['price_type'] = 'Price type must match the selected series.'
+                if series.currency != self.currency:
+                    mismatches['currency'] = 'Currency must match the selected series.'
+                if series.unit != self.unit:
+                    mismatches['unit'] = 'Quotation unit must match the selected series.'
+                if series.source != self.source:
+                    mismatches['source'] = 'Source must match the selected series.'
+                if mismatches:
+                    raise ValidationError(mismatches)
+        elif self.status in (ObservationStatus.PENDING_REVIEW, ObservationStatus.PUBLISHED):
+            raise ValidationError({'series': 'An observation must have an exact series before review or publication.'})
+
+    def save(self, *args, **kwargs):
+        """Enforce series identity, provenance and immutable published records.
+
+        If a draft is moved to review without a pre-created series, create the exact
+        series from its complete identity dimensions. This never merges providers,
+        currencies, units or price types.
+        """
+        from django.db import transaction
+        from apps.market_data.models.series import MarketDataSeries
+
+        using = kwargs.get('using') or self._state.db or 'market_data'
+        if using != 'market_data':
+            raise ValidationError('PriceObservation must be stored in the market_data database.')
+        kwargs['using'] = using
+        is_new = self._state.adding
+        previous = None
+        if not is_new and self.pk:
+            previous = type(self).objects.using(using).filter(pk=self.pk).values().first()
+            if previous and previous.get('status') == ObservationStatus.PUBLISHED:
+                immutable = [field.attname for field in self._meta.concrete_fields if field.name != 'updated_at']
+                changed = [name for name in immutable if previous.get(name) != getattr(self, name)]
+                if changed:
+                    raise ValidationError(
+                        'Published observations are immutable. Create a correction instead. '
+                        f'Changed fields: {", ".join(changed)}'
+                    )
+                # A no-op save must not issue an UPDATE against the PostgreSQL guard trigger.
+                return self
+
+        if self.status in (ObservationStatus.PENDING_REVIEW, ObservationStatus.PUBLISHED) and not self.series_id:
+            instrument = Instrument.objects.using('default').filter(pk=self.instrument_id).first()
+            if instrument is None:
+                raise ValidationError({'instrument_id': 'Canonical instrument does not exist in the primary database.'})
+            series, _ = MarketDataSeries.objects.using(using).get_or_create(
+                instrument_id=self.instrument_id,
+                exchange=instrument.exchange or '',
+                source=self.source,
+                price_type=self.price_type,
+                currency=self.currency,
+                unit=self.unit,
+                pricing_methodology='',
+                adjustment_methodology='RAW',
+                defaults={'description': f'Auto-created exact series for {instrument.symbol}'},
+            )
+            self.series = series
+
+        if self.status == ObservationStatus.PUBLISHED and not self.published_at:
+            self.published_at = timezone.now()
+        self.full_clean(exclude=None, validate_unique=False, validate_constraints=False)
+
+        was_published = bool(previous and previous.get('status') == ObservationStatus.PUBLISHED)
+        became_published = self.status == ObservationStatus.PUBLISHED and not was_published
+        managed_publication = getattr(self, '_publication_managed', False)
+        if became_published and not is_new and not managed_publication:
+            raise ValidationError('Use PriceObservation.publish() to transition a reviewed observation to PUBLISHED.')
+        with transaction.atomic(using=using):
+            result = super().save(*args, **kwargs)
+            # Defensive compatibility for internal ingestion that creates an already
+            # published record: it still advances the version and emits the outbox.
+            # Public API serializers never allow clients to set PUBLISHED or trust.
+            if became_published and not managed_publication and self.series_id:
+                series = MarketDataSeries.objects.using(using).select_for_update().get(pk=self.series_id)
+                series.data_version += 1
+                series.last_published_at = self.published_at
+                series.save(using=using, update_fields=['data_version', 'last_published_at', 'updated_at'])
+                from apps.market_data.models.publication_event import MarketDataPublicationEvent
+                MarketDataPublicationEvent.objects.using(using).create(
+                    observation_id=self.id, instrument_id=self.instrument_id,
+                    series_id=self.series_id, effective_at=self.effective_at,
+                    price_type=self.price_type, value=self.value, currency=self.currency,
+                    data_version=series.data_version,
+                )
+        return result
+
+    def delete(self, *args, **kwargs):
+        if self.status == ObservationStatus.PUBLISHED:
+            raise ValidationError('Published observations cannot be deleted; create a correction instead.')
+        return super().delete(*args, **kwargs)
 
     def submit_for_review(self) -> None:
         """
@@ -247,6 +358,19 @@ class PriceObservation(models.Model):
             )
         if not publisher:
             raise ValidationError('A publisher must be specified to publish an observation.')
+        authorized = bool(
+            getattr(publisher, 'is_superuser', False)
+            or getattr(publisher, 'is_staff', False)
+            or publisher.groups.filter(name='MarketDataPublisher').exists()
+        )
+        if not authorized:
+            raise ValidationError('Only an authorized MarketDataPublisher or staff user can publish observations.')
+        # Only a publisher's explicit approval can elevate a manual draft. The API
+        # does not accept client-supplied trust_class values.
+        if self.trust_class == TrustClass.UNVERIFIED and self.source in ('MANUAL_VERIFIED', 'CSV_IMPORT'):
+            self.trust_class = TrustClass.MANUAL_VERIFIED
+        elif self.trust_class == TrustClass.UNVERIFIED and self.source in ('YAHOO_FINANCE_FEED', 'MFAPI_AGGREGATOR'):
+            self.trust_class = TrustClass.VERIFIED_PERMITTED_SECONDARY
 
         from django.db import transaction
 
@@ -263,7 +387,11 @@ class PriceObservation(models.Model):
                 self.series.last_published_at = self.published_at
                 self.series.save(using='market_data', update_fields=['data_version', 'last_published_at', 'updated_at'])
 
-            self.save(using='market_data')
+            self._publication_managed = True
+            try:
+                self.save(using='market_data')
+            finally:
+                self._publication_managed = False
 
             # Create durable publication event in secondary outbox
             MarketDataPublicationEvent.objects.using('market_data').create(
@@ -285,7 +413,7 @@ class PriceObservation(models.Model):
 
             # Mark any corresponding worklist item as COMPLETED
             from apps.market_data.models.worklist import MarketDataWorklistItem, WorklistItemStatus
-            eff_date = self.effective_at.date() if hasattr(self.effective_at, 'date') else self.effective_at
+            eff_date = self.effective_at.astimezone(ZoneInfo('Asia/Kolkata')).date() if hasattr(self.effective_at, 'astimezone') else self.effective_at
             MarketDataWorklistItem.objects.using('market_data').filter(
                 instrument_id=self.instrument_id,
                 effective_date=eff_date,

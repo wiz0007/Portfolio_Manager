@@ -89,6 +89,7 @@ class GoldValuationStrategy(BaseAssetValuationStrategy):
         rate_24k = None
         source_name = 'USER_INPUT'
         source_ref = ''
+        market_data_provenance = {}
         is_synthetic = False
         val_status = ValuationStatus.SUCCESS
 
@@ -99,11 +100,16 @@ class GoldValuationStrategy(BaseAssetValuationStrategy):
                 if resolved.price is not None and resolved.status in (
                     ResolutionStatus.AVAILABLE,
                     ResolutionStatus.STALE,
-                    ResolutionStatus.SYNTHETIC,
                 ):
                     rate_24k = resolved.price
                     source_name = resolved.source or 'MANUAL_VERIFIED'
                     source_ref = resolved.source_reference or investment.instrument.symbol
+                    market_data_provenance = {
+                        'series_id': resolved.series_id,
+                        'observation_id': resolved.observation_id,
+                        'series_data_version': resolved.data_version,
+                        'price_type': resolved.price_type,
+                    }
                     is_synthetic = resolved.is_synthetic
                     if resolved.effective_at:
                         obs_dt = resolved.effective_at
@@ -112,14 +118,7 @@ class GoldValuationStrategy(BaseAssetValuationStrategy):
             except Exception:
                 pass
 
-            if rate_24k is None:
-                latest_quote = investment.instrument.latest_quote
-                if latest_quote and latest_quote.price:
-                    rate_24k = latest_quote.price
-                    source_name = latest_quote.provider or 'MARKET_DATA'
-                    source_ref = investment.instrument.symbol
-                    is_synthetic = latest_quote.is_synthetic
-                    obs_dt = latest_quote.timestamp
+
 
         if rate_24k is None:
             raw_p = details.get('current_price_per_gram') or details.get('user_estimate')
@@ -165,5 +164,6 @@ class GoldValuationStrategy(BaseAssetValuationStrategy):
                 'fine_weight_24k_grams': str(fine_grams),
                 'rate_per_gram_24k': str(rate_24k),
                 'is_synthetic': is_synthetic,
+                **market_data_provenance,
             },
         )

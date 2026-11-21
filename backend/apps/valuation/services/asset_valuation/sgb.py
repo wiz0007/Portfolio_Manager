@@ -74,7 +74,6 @@ class SovereignGoldBondValuationStrategy(BaseAssetValuationStrategy):
                 if resolved.price is not None and resolved.status in (
                     ResolutionStatus.AVAILABLE,
                     ResolutionStatus.STALE,
-                    ResolutionStatus.SYNTHETIC,
                 ):
                     unit_price = resolved.price
                     source_name = resolved.source or 'MANUAL_VERIFIED'

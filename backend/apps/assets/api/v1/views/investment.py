@@ -1,7 +1,7 @@
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import generics, status
-from rest_framework.permissions import IsAuthenticated
+from core.permissions import IsAuthenticatedAndEmailVerified as IsAuthenticated
 from rest_framework.response import Response
 
 from apps.assets.api.v1.serializers import (
@@ -159,4 +159,10 @@ class InvestmentDetailView(generics.RetrieveUpdateDestroyAPIView):
         tags=["Investments"],
     )
     def delete(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.transactions.exists() or instance.valuations.exists():
+            return Response(
+                {'detail': 'An investment with transaction or valuation history cannot be deleted. Archive functionality must be used instead.'},
+                status=status.HTTP_409_CONFLICT,
+            )
         return super().delete(request, *args, **kwargs)

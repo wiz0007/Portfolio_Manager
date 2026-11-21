@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
@@ -66,7 +67,9 @@ class DashboardService:
 
         # Scope investments
         inv_qs = Investment.objects.filter(user=user, is_active=True).select_related(
-            'portfolio', 'instrument', 'instrument__reference_data'
+            'portfolio', 'instrument', 'instrument__reference_data',
+            'equity_detail', 'mutual_fund_detail', 'bond_detail', 'deposit_detail',
+            'real_estate_detail', 'gold_detail', 'crypto_detail', 'cash_detail',
         ).prefetch_related('valuations')
 
         if selected_portfolio:
@@ -143,7 +146,7 @@ class DashboardService:
                 if res:
                     if res.status == 'STALE':
                         stale_count += 1
-                    elif res.status in ('MISSING', 'UNSUPPORTED'):
+                    elif res.status in ('MISSING', 'UNSUPPORTED', 'UNVERIFIED', 'SYNTHETIC', 'INCOMPATIBLE'):
                         missing_count += 1
 
         completeness_pct = 100.0
@@ -360,7 +363,9 @@ class DashboardService:
         """
         selected_portfolio = cls.resolve_portfolio_scope(user, portfolio_id)
         inv_qs = Investment.objects.filter(user=user).select_related(
-            'portfolio', 'instrument', 'instrument__reference_data'
+            'portfolio', 'instrument', 'instrument__reference_data',
+            'equity_detail', 'mutual_fund_detail', 'bond_detail', 'deposit_detail',
+            'real_estate_detail', 'gold_detail', 'crypto_detail', 'cash_detail',
         ).prefetch_related('valuations')
 
         if selected_portfolio:
@@ -568,11 +573,14 @@ class DashboardService:
                 elif res.status == 'STALE':
                     stale_list.append({
                         **holding_info,
-                        'reason': f"Market price for {inst.symbol} is stale (effective {res.effective_at.date() if res.effective_at else 'unknown'}).",
+                        'reason': f"Market price for {inst.symbol} is stale (effective {res.effective_at.astimezone(ZoneInfo('Asia/Kolkata')).date() if res.effective_at else 'unknown'}).",
                     })
-                elif res.status == 'SYNTHETIC':
-                    valued_list.append(holding_info)
-                elif res.status == 'AWAITING_VERIFICATION':
+                elif res.status in ('SYNTHETIC', 'INCOMPATIBLE'):
+                    unsupported_list.append({
+                        **holding_info,
+                        'reason': f"Market observation is not eligible for valuation ({res.status}).",
+                    })
+                elif res.status in ('AWAITING_VERIFICATION', 'UNVERIFIED'):
                     unverified_list.append({
                         **holding_info,
                         'reason': "Instrument price is awaiting verification.",

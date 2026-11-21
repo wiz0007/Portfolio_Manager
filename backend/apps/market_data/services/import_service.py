@@ -2,7 +2,8 @@ import csv
 import io
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List
 
@@ -16,7 +17,8 @@ from apps.market_data.models.import_batch import (
     PriceImportRowError,
 )
 from apps.market_data.models.instrument import Instrument, InstrumentStatus
-from apps.market_data.models.observation import ObservationStatus, PriceObservation
+from apps.market_data.models.observation import ObservationStatus, PriceObservation, TrustClass
+from apps.market_data.models.series import MarketDataSeries
 from apps.market_data.models.worklist import MarketDataWorklistItem
 
 logger = logging.getLogger(__name__)
@@ -39,6 +41,8 @@ class PriceImportService:
     """
 
     SUPPORTED_VERSIONS = {'1.0'}
+    MAX_CONTENT_BYTES = 5 * 1024 * 1024
+    MAX_ROWS = 5000
 
     @classmethod
     def preview_csv(cls, user, csv_content: str, filename: str = 'import.csv') -> Dict[str, Any]:
@@ -46,16 +50,24 @@ class PriceImportService:
         Parses and validates a CSV string without creating PriceObservation records.
         Returns detailed summary and row-level validation errors.
         """
+        if len(csv_content.encode('utf-8')) > cls.MAX_CONTENT_BYTES:
+            raise ValidationError('CSV exceeds the 5 MB upload limit.')
         reader = csv.DictReader(io.StringIO(csv_content))
         total_rows = 0
         valid_rows: List[Dict[str, Any]] = []
         errors: List[Dict[str, Any]] = []
-        seen_instruments: set = set()
+        seen_series_dates: set = set()
+        instrument_cache = {}
+        worklist_item_cache = {}
+        coverage_cache = {}
+        series_cache = {}
 
         now_utc = dj_timezone.now()
 
         for idx, raw_row in enumerate(reader, start=2):  # Header is line 1
             total_rows += 1
+            if total_rows > cls.MAX_ROWS:
+                raise ValidationError(f'CSV exceeds the {cls.MAX_ROWS} row limit.')
             row_errors = []
 
             schema_ver = clean_cell(raw_row.get('schema_version', '1.0'))
@@ -70,15 +82,21 @@ class PriceImportService:
             if inst_id_raw:
                 try:
                     inst_uuid = uuid.UUID(inst_id_raw)
-                    instrument = Instrument.objects.filter(id=inst_uuid).first()
+                    if inst_uuid not in instrument_cache:
+                        instrument_cache[inst_uuid] = Instrument.objects.filter(id=inst_uuid).first()
+                    instrument = instrument_cache[inst_uuid]
                 except ValueError:
                     row_errors.append({'field': 'instrument_id', 'error': 'Invalid UUID format for instrument_id.'})
             elif item_id_raw:
                 try:
                     item_uuid = uuid.UUID(item_id_raw)
-                    item = MarketDataWorklistItem.objects.filter(id=item_uuid).select_related('instrument').first()
+                    if item_uuid not in worklist_item_cache:
+                        worklist_item_cache[item_uuid] = MarketDataWorklistItem.objects.using('market_data').filter(id=item_uuid).first()
+                    item = worklist_item_cache[item_uuid]
                     if item:
-                        instrument = item.instrument
+                        if item.instrument_id not in instrument_cache:
+                            instrument_cache[item.instrument_id] = Instrument.objects.filter(id=item.instrument_id).first()
+                        instrument = instrument_cache[item.instrument_id]
                 except ValueError:
                     row_errors.append({'field': 'worklist_item_id', 'error': 'Invalid UUID format for worklist_item_id.'})
 
@@ -114,30 +132,78 @@ class PriceImportService:
                         eff_dt = datetime.fromisoformat(eff_raw.replace('Z', '+00:00'))
                     else:
                         eff_date = datetime.strptime(eff_raw, '%Y-%m-%d').date()
-                        eff_dt = datetime.combine(eff_date, datetime.min.time(), tzinfo=timezone.utc)
+                        eff_dt = datetime.combine(eff_date, datetime.min.time(), tzinfo=ZoneInfo('Asia/Kolkata')).astimezone(timezone.utc)
 
-                    if eff_dt > now_utc + dj_timezone.timedelta(minutes=5):
+                    if dj_timezone.is_naive(eff_dt):
+                        eff_dt = eff_dt.replace(tzinfo=ZoneInfo('Asia/Kolkata'))
+                    eff_dt = eff_dt.astimezone(timezone.utc)
+                    if eff_dt > now_utc + timedelta(minutes=5):
                         row_errors.append({'field': 'effective_at', 'error': 'Effective timestamp cannot be in the future.'})
                 except Exception:
                     row_errors.append({'field': 'effective_at', 'error': f"Invalid date format '{eff_raw}'. Use YYYY-MM-DD or ISO 8601."})
 
-            # Coverage policy compatibility
+            # Exact series identity is mandatory for CSV imports.
             price_type = clean_cell(raw_row.get('price_type', 'LTP')).upper()
             currency = clean_cell(raw_row.get('currency', 'INR')).upper()
             unit = clean_cell(raw_row.get('unit', 'UNITS')).upper()
 
-            if instrument and hasattr(instrument, 'coverage'):
-                cov = instrument.coverage
-                if cov.currency != currency:
-                    row_errors.append({'field': 'currency', 'error': f"Currency mismatch: expected '{cov.currency}', got '{currency}'."})
+            source_name = clean_cell(raw_row.get('source_id') or 'CSV_IMPORT')
+            series_raw = clean_cell(raw_row.get('series_id'))
+            series = None
+            if instrument:
+                series_cache_key = (instrument.id, price_type, currency, unit, source_name, series_raw)
+                if series_cache_key not in series_cache:
+                    series_qs = MarketDataSeries.objects.using('market_data').filter(
+                        instrument_id=instrument.id, price_type=price_type,
+                        currency=currency, unit=unit, is_active=True,
+                    )
+                    if series_raw:
+                        try:
+                            series_cache[series_cache_key] = series_qs.filter(pk=uuid.UUID(series_raw)).first()
+                        except ValueError:
+                            series_cache[series_cache_key] = None
+                    else:
+                        matches = list(series_qs.filter(source=source_name).order_by('id')[:2])
+                        if len(matches) == 1:
+                            series_cache[series_cache_key] = matches[0]
+                        elif len(matches) > 1:
+                            series_cache[series_cache_key] = 'AMBIGUOUS'
+                        else:
+                            all_matches = list(series_qs.order_by('id')[:2])
+                            series_cache[series_cache_key] = all_matches[0] if len(all_matches) == 1 else ('AMBIGUOUS' if len(all_matches) > 1 else None)
+                series = series_cache[series_cache_key]
+                if series == 'AMBIGUOUS':
+                    row_errors.append({'field': 'series_id', 'error': 'Multiple series match. Supply an exact series_id.'})
+                elif series is None and series_raw:
+                    row_errors.append({'field': 'series_id', 'error': 'No active series matches the supplied series_id and identity dimensions.'})
+                if series and series.source != source_name:
+                    row_errors.append({'field': 'source_id', 'error': f"Source '{source_name}' does not match selected series source '{series.source}'."})
+                if series is None and not any(e['field'] == 'series_id' for e in row_errors):
+                    row_errors.append({'field': 'series_id', 'error': 'No exact active series matches this instrument, price type, currency and unit.'})
 
-            # Duplicate check inside batch
-            if instrument and eff_dt:
-                dedup_key = (instrument.id, eff_dt.date())
-                if dedup_key in seen_instruments:
-                    row_errors.append({'field': 'instrument_id', 'error': f"Duplicate observation for instrument {instrument.symbol} on {eff_dt.date()} inside this CSV."})
+                if instrument.id not in coverage_cache:
+                    coverage_cache[instrument.id] = instrument.coverage
+                cov = coverage_cache[instrument.id]
+                if cov and cov.currency and cov.currency != currency:
+                    row_errors.append({'field': 'currency', 'error': f"Currency mismatch: expected '{cov.currency}', got '{currency}'."})
+                if cov and cov.price_type != price_type:
+                    row_errors.append({'field': 'price_type', 'error': f"Price type mismatch: expected '{cov.price_type}', got '{price_type}'."})
+
+            if instrument and eff_dt and series:
+                dedup_key = (instrument.id, series.id, eff_dt.astimezone(ZoneInfo('Asia/Kolkata')).date())
+                if dedup_key in seen_series_dates:
+                    row_errors.append({'field': 'series_id', 'error': f"Duplicate observation for series {series.id} on this market date inside this CSV."})
                 else:
-                    seen_instruments.add(dedup_key)
+                    seen_series_dates.add(dedup_key)
+                market_day = eff_dt.astimezone(ZoneInfo('Asia/Kolkata')).date()
+                day_start = datetime.combine(market_day, datetime.min.time(), tzinfo=ZoneInfo('Asia/Kolkata')).astimezone(timezone.utc)
+                day_end = datetime.combine(market_day + timedelta(days=1), datetime.min.time(), tzinfo=ZoneInfo('Asia/Kolkata')).astimezone(timezone.utc)
+                if PriceObservation.objects.using('market_data').filter(
+                    instrument_id=instrument.id, series_id=series.id,
+                    effective_at__gte=day_start, effective_at__lt=day_end,
+                    price_type=price_type, source=source_name, status=ObservationStatus.PUBLISHED,
+                ).exists():
+                    row_errors.append({'field': 'effective_at', 'error': 'An observation for this exact series and market date is already published.'})
 
             if row_errors:
                 for err in row_errors:
@@ -153,12 +219,13 @@ class PriceImportService:
                     'instrument_id': str(instrument.id),
                     'symbol': instrument.symbol,
                     'instrument_name': instrument.name,
+                    'series_id': str(series.id),
                     'price_type': price_type,
                     'value': str(dec_val),
                     'currency': currency,
                     'unit': unit,
                     'effective_at': eff_dt.isoformat(),
-                    'source': clean_cell(raw_row.get('source_id') or 'CSV_IMPORT'),
+                    'source': source_name,
                     'source_reference': clean_cell(raw_row.get('source_reference')),
                     'notes': clean_cell(raw_row.get('notes')),
                 })
@@ -218,8 +285,15 @@ class PriceImportService:
 
         # Create draft PriceObservation for every valid row
         for row in valid_rows:
+            if not MarketDataSeries.objects.using('market_data').filter(
+                pk=row['series_id'], instrument_id=row['instrument_id'],
+                price_type=row['price_type'], currency=row['currency'], unit=row['unit'],
+                source=row['source'], is_active=True,
+            ).exists():
+                raise ValidationError(f"Series {row['series_id']} changed or is no longer active; create a new preview.")
             PriceObservation.objects.create(
                 instrument_id=row['instrument_id'],
+                series_id=row['series_id'],
                 price_type=row['price_type'],
                 value=Decimal(row['value']),
                 currency=row['currency'],
@@ -229,6 +303,7 @@ class PriceImportService:
                 source_reference=row['source_reference'],
                 notes=f"[Batch {batch.id}] {row['notes']}".strip(),
                 status=ObservationStatus.DRAFT,
+                trust_class=TrustClass.UNVERIFIED,
                 recorded_by=user,
             )
 

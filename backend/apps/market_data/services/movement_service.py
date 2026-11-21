@@ -4,9 +4,11 @@ from decimal import Decimal
 from typing import Optional
 
 from django.utils import timezone as dj_timezone
+from django.db.models import F, Window
+from django.db.models.functions import RowNumber
 
 from apps.market_data.models.instrument import Instrument
-from apps.market_data.models.observation import ObservationStatus, PriceObservation
+from apps.market_data.models.observation import ObservationStatus, PriceObservation, TrustClass
 
 
 class MovementStatus:
@@ -34,6 +36,58 @@ class PriceMovementService:
     """
 
     @classmethod
+    def calculate_movements_bulk(cls, resolved_map):
+        """Resolve previous observations for many exact series in one bounded query."""
+        eligible = {
+            key: value for key, value in resolved_map.items()
+            if value and value.price is not None and value.series_id and value.effective_at
+        }
+        if not eligible:
+            return {}
+        series_ids = list({value.series_id for value in eligible.values()})
+        ranked = (
+            PriceObservation.objects.using('market_data').filter(
+                series_id__in=series_ids,
+                status=ObservationStatus.PUBLISHED,
+                is_synthetic=False,
+                trust_class__in=[TrustClass.VERIFIED_OFFICIAL, TrustClass.VERIFIED_PERMITTED_SECONDARY,
+                                 TrustClass.MANUAL_VERIFIED, TrustClass.CORRECTED],
+            )
+            .exclude(corrections__status=ObservationStatus.PUBLISHED)
+            .annotate(row_number=Window(
+                expression=RowNumber(), partition_by=[F('series_id')],
+                order_by=[F('effective_at').desc(), F('published_at').desc(), F('created_at').desc()],
+            ))
+            .filter(row_number__lte=2)
+            .order_by('series_id', '-effective_at', '-published_at', '-created_at')
+        )
+        previous_by_series = {}
+        for observation in ranked:
+            previous_by_series.setdefault(str(observation.series_id), []).append(observation)
+
+        results = {}
+        for key, current in eligible.items():
+            candidates = previous_by_series.get(current.series_id, [])
+            previous = next((obs for obs in candidates if obs.effective_at < current.effective_at), None)
+            if previous is None:
+                results[key] = PriceMovement(None, None, None, None, MovementStatus.UNAVAILABLE,
+                                             'No eligible prior observation exists in this exact series.')
+            elif previous.currency != current.currency or previous.unit != current.unit or previous.price_type != current.price_type:
+                results[key] = PriceMovement(None, None, previous.value, previous.effective_at,
+                                             MovementStatus.INCOMPATIBLE,
+                                             'Previous observation has incompatible currency, unit or price type.')
+            elif previous.value <= Decimal('0'):
+                results[key] = PriceMovement(None, None, previous.value, previous.effective_at,
+                                             MovementStatus.ZERO_BASE, 'Previous price is zero.')
+            else:
+                change = current.price - previous.value
+                percent = (change / previous.value * Decimal('100')).quantize(Decimal('0.0001'))
+                results[key] = PriceMovement(change, percent, previous.value, previous.effective_at,
+                                             MovementStatus.CALCULATED,
+                                             'Calculated from the same published price series.')
+        return results
+
+    @classmethod
     def calculate_movement(
         cls,
         instrument: Instrument,
@@ -56,6 +110,9 @@ class PriceMovementService:
 
         ref_dt = current_dt or dj_timezone.now()
         expected_currency = currency or instrument.currency
+        if not series_id:
+            return PriceMovement(None, None, None, None, MovementStatus.UNAVAILABLE,
+                                 'Exact series_id is required to calculate comparable movement.')
 
         # Look for previous published PriceObservation strictly before ref_dt (excluding superseded)
         obs_qs = (
@@ -63,17 +120,19 @@ class PriceMovementService:
                 instrument=instrument,
                 status=ObservationStatus.PUBLISHED,
                 effective_at__lt=ref_dt,
+                trust_class__in=[TrustClass.VERIFIED_OFFICIAL, TrustClass.VERIFIED_PERMITTED_SECONDARY, TrustClass.MANUAL_VERIFIED, TrustClass.CORRECTED],
             )
             .exclude(corrections__status=ObservationStatus.PUBLISHED)
+            .filter(series_id=series_id, is_synthetic=False)
         )
-        if series_id:
-            obs_qs = obs_qs.filter(series_id=series_id)
         if price_type:
             obs_qs = obs_qs.filter(price_type=price_type)
         if unit:
             obs_qs = obs_qs.filter(unit=unit)
+        if currency:
+            obs_qs = obs_qs.filter(currency=currency)
 
-        prev_obs = obs_qs.order_by('-effective_at').first()
+        prev_obs = obs_qs.order_by('-effective_at', '-published_at', '-created_at').first()
 
         if prev_obs:
             if prev_obs.currency != expected_currency:

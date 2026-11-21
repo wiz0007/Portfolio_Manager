@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { marketDataApi } from '../api/marketDataApi';
 import { Instrument } from '../types';
@@ -18,7 +18,13 @@ export const ManualPriceEntryModal: React.FC<ManualPriceEntryModalProps> = ({
 }) => {
   const [price, setPrice] = useState('');
   const [priceType, setPriceType] = useState('LTP');
-  const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().split('T')[0]);
+  const [seriesList, setSeriesList] = useState<Array<{ id: string; source: string; exchange: string; price_type: string; currency: string; unit: string }>>([]);
+  const [seriesId, setSeriesId] = useState('');
+  const [seriesCurrency, setSeriesCurrency] = useState('INR');
+  const [seriesUnit, setSeriesUnit] = useState('SHARES');
+  const [isLoadingSeries, setIsLoadingSeries] = useState(false);
+  const [isCreatingSeries, setIsCreatingSeries] = useState(false);
+  const [effectiveDate, setEffectiveDate] = useState(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()));
   const [source, setSource] = useState('MANUAL_VERIFIED');
   const [sourceRef, setSourceRef] = useState('');
   const [notes, setNotes] = useState('');
@@ -26,11 +32,79 @@ export const ManualPriceEntryModal: React.FC<ManualPriceEntryModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!isOpen || !instrument) return;
+    let cancelled = false;
+    setIsLoadingSeries(true);
+    setError(null);
+    setSeriesId('');
+    setSeriesList([]);
+    marketDataApi.getSeries(instrument.id)
+      .then((rows) => {
+        if (cancelled) return;
+        const manualRows = rows.filter((row) => row.source === 'MANUAL_VERIFIED');
+        setSeriesList(manualRows);
+        const preferredType = instrument.asset_class === 'MUTUAL_FUND'
+          ? 'NAV'
+          : instrument.asset_class === 'INDEX' ? 'CLOSE'
+            : instrument.asset_class === 'COMMODITY' ? 'INDICATIVE_VALUATION'
+              : instrument.asset_class === 'REAL_ESTATE' || instrument.asset_class === 'FIXED_INCOME'
+                ? 'APPRAISAL' : 'LTP';
+        setPriceType(preferredType);
+        const preferred = manualRows.find((row) => row.price_type === preferredType) || manualRows[0];
+        if (preferred) {
+          setSeriesId(preferred.id);
+          setPriceType(preferred.price_type);
+          setSource(preferred.source);
+          setSeriesCurrency(preferred.currency);
+          setSeriesUnit(preferred.unit);
+        } else {
+          setError('No publisher-reviewed manual series exists yet. Create one before recording a manual observation.');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setError("Unable to load the instrument's market-data series.");
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingSeries(false);
+      });
+    return () => { cancelled = true; };
+  }, [isOpen, instrument?.id]);
+
   if (!isOpen || !instrument) return null;
+
+  const handleCreateManualSeries = async () => {
+    if (!instrument) return;
+    setIsCreatingSeries(true);
+    setError(null);
+    const unit = instrument.asset_class === 'MUTUAL_FUND' || instrument.asset_class === 'INDEX'
+      ? 'UNITS'
+      : instrument.asset_class === 'COMMODITY' ? 'GRAMS_24K'
+        : instrument.asset_class === 'REAL_ESTATE' || instrument.asset_class === 'FIXED_INCOME' || instrument.asset_class === 'CASH_EQUIVALENT'
+          ? 'CURRENCY' : 'SHARES';
+    try {
+      const created = await marketDataApi.createManualSeries(instrument.id, priceType, unit);
+      setSeriesList((current) => [...current.filter((row) => row.id !== created.id), created]);
+      setSeriesId(created.id);
+      setPriceType(created.price_type);
+      setSource(created.source);
+      setSeriesCurrency(created.currency);
+      setSeriesUnit(created.unit);
+    } catch (err: any) {
+      const message = err.response?.data?.detail || 'Failed to create the manual price series.';
+      setError(typeof message === 'string' ? message : JSON.stringify(message));
+    } finally {
+      setIsCreatingSeries(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!price || parseFloat(price) <= 0) {
+    if (!seriesId) {
+      setError('Select an exact market-data series before recording an observation.');
+      return;
+    }
+    if (!price || !Number.isFinite(Number(price)) || parseFloat(price) <= 0) {
       setError('Please enter a valid positive price amount.');
       return;
     }
@@ -38,12 +112,14 @@ export const ManualPriceEntryModal: React.FC<ManualPriceEntryModalProps> = ({
     setIsLoading(true);
     setError(null);
     try {
-      const effectiveAt = `${effectiveDate}T10:00:00Z`;
+      const effectiveAt = new Date(`${effectiveDate}T15:30:00+05:30`).toISOString();
       const res = await marketDataApi.createPriceObservation({
         instrument: instrument.id,
+        series: seriesId,
         price_type: priceType,
         value: price.trim(),
-        currency: instrument.currency,
+        currency: seriesCurrency,
+        unit: seriesUnit,
         effective_at: effectiveAt,
         source: source.trim() || 'MANUAL_VERIFIED',
         source_reference: sourceRef.trim(),
@@ -51,6 +127,7 @@ export const ManualPriceEntryModal: React.FC<ManualPriceEntryModalProps> = ({
       });
 
       if (shouldPublish && res && (res as any).id) {
+        await marketDataApi.submitPriceObservationForReview((res as any).id);
         await marketDataApi.publishPriceObservation((res as any).id);
       }
 
@@ -94,7 +171,7 @@ export const ManualPriceEntryModal: React.FC<ManualPriceEntryModalProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-theme-text mb-1">
-                Observed Price ({instrument.currency}) <span className="text-rose-400">*</span>
+                Observed Price ({seriesCurrency}) <span className="text-rose-400">*</span>
               </label>
               <input
                 type="number"
@@ -110,9 +187,43 @@ export const ManualPriceEntryModal: React.FC<ManualPriceEntryModalProps> = ({
             </div>
 
             <div>
+              <label className="block text-xs font-semibold text-theme-text mb-1">Exact Market-Data Series</label>
+              <select
+                value={seriesId}
+                disabled={isLoadingSeries || seriesList.length === 0}
+                onChange={(e) => {
+                  const selected = seriesList.find((row) => row.id === e.target.value);
+                  setSeriesId(e.target.value);
+                  if (selected) {
+                    setPriceType(selected.price_type);
+                    setSource(selected.source);
+                    setSeriesCurrency(selected.currency);
+                    setSeriesUnit(selected.unit);
+                  }
+                }}
+                className="w-full px-3 py-2 rounded-xl border border-theme-border bg-theme-bg text-theme-text text-sm focus:outline-none focus:ring-2 focus:ring-theme-primary/40"
+              >
+                <option value="">{isLoadingSeries ? 'Loading series…' : 'Select series'}</option>
+                {seriesList.map((row) => (
+                  <option key={row.id} value={row.id}>{row.exchange || 'No exchange'} · {row.price_type} · {row.source} · {row.currency}/{row.unit}</option>
+                ))}
+              </select>
+              {!isLoadingSeries && seriesList.length === 0 && (
+                <button
+                  type="button"
+                  onClick={handleCreateManualSeries}
+                  disabled={isCreatingSeries}
+                  className="mt-2 text-xs font-semibold text-theme-primary hover:underline disabled:opacity-50"
+                >
+                  {isCreatingSeries ? 'Creating manual series…' : 'Create publisher-reviewed manual series'}
+                </button>
+              )}
+            </div>
+            <div>
               <label className="block text-xs font-semibold text-theme-text mb-1">Price Basis</label>
               <select
                 value={priceType}
+                disabled={Boolean(seriesId)}
                 onChange={(e) => setPriceType(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border border-theme-border bg-theme-bg text-theme-text text-sm focus:outline-none focus:ring-2 focus:ring-theme-primary/40"
               >
@@ -120,6 +231,7 @@ export const ManualPriceEntryModal: React.FC<ManualPriceEntryModalProps> = ({
                 <option value="NAV">NAV (Net Asset Value)</option>
                 <option value="CLOSE">Daily Close</option>
                 <option value="INDICATIVE_VALUATION">Indicative Valuation</option>
+                <option value="APPRAISAL">Appraisal</option>
               </select>
             </div>
           </div>
@@ -141,7 +253,7 @@ export const ManualPriceEntryModal: React.FC<ManualPriceEntryModalProps> = ({
               <input
                 type="text"
                 value={source}
-                onChange={(e) => setSource(e.target.value)}
+                readOnly
                 placeholder="e.g. NSE, BSE, AMFI..."
                 className="w-full px-3.5 py-2 rounded-xl border border-theme-border bg-theme-bg text-theme-text text-sm focus:outline-none focus:ring-2 focus:ring-theme-primary/40 focus:border-theme-primary"
               />
@@ -187,14 +299,14 @@ export const ManualPriceEntryModal: React.FC<ManualPriceEntryModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              disabled={isLoading}
+              disabled={isLoading || isLoadingSeries || !seriesId}
               className="px-4 py-2 rounded-xl border border-theme-border text-xs font-semibold text-theme-text hover:bg-theme-hover"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || isLoadingSeries || !seriesId}
               className="px-4 py-2 rounded-xl bg-theme-primary text-white text-xs font-semibold hover:bg-theme-primary/90 flex items-center gap-1.5 shadow-sm"
             >
               {isLoading ? (

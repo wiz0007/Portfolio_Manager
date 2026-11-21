@@ -15,7 +15,7 @@ class MarketInstrumentReference(models.Model):
     daily observations, quotes, and coverage resolution.
     """
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, help_text="Canonical Instrument UUID")
+    id = models.UUIDField(primary_key=True, editable=False, help_text="Canonical Instrument UUID")
     symbol = models.CharField(max_length=64, db_index=True)
     name = models.CharField(max_length=255)
     asset_class = models.CharField(

@@ -1,12 +1,12 @@
 import os
 import sys
-import ssl
 import csv
 import io
 import json
 import uuid
 import urllib.request
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime, time as dt_time, timedelta, timezone as dt_timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal
 
 # Set up Django environment
@@ -18,30 +18,22 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 import django
 django.setup()
 
+from django.db import transaction
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 
 from apps.market_data.models.instrument import Instrument, AssetClass, InstrumentStatus
 from apps.market_data.models.coverage import InstrumentCoverage, PriceType, QuotationUnit, CollectionCadence, CoverageStatus
-from apps.market_data.models.observation import PriceObservation, ObservationStatus
-from apps.market_data.models.market_data_point import MarketDataPoint
+from apps.market_data.models.observation import PriceObservation, ObservationStatus, TrustClass
+from apps.market_data.models.series import MarketDataSeries
 from apps.market_data.services.price_resolver import PriceResolver
 
-import time
-
-SSL_CTX = ssl._create_unverified_context()
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
 
-def fetch_url(url: str, timeout: int = 20) -> str:
-    for attempt in range(4):
-        try:
-            req = urllib.request.Request(url, headers=HEADERS)
-            with urllib.request.urlopen(req, context=SSL_CTX, timeout=timeout) as res:
-                return res.read().decode('utf-8', errors='ignore')
-        except Exception as e:
-            if attempt == 3:
-                raise e
-            time.sleep(1.5)
+def fetch_url(url: str, timeout: int = 15) -> str:
+    req = urllib.request.Request(url, headers=HEADERS)
+    with urllib.request.urlopen(req, timeout=timeout) as res:
+        return res.read().decode('utf-8', errors='ignore')
 
 def main():
     print("=" * 60)
@@ -49,7 +41,9 @@ def main():
     print("=" * 60)
 
     User = get_user_model()
-    admin_user = User.objects.filter(is_superuser=True).first()
+    admin_user = User.objects.filter(is_superuser=True, is_active=True).first()
+    if admin_user is None:
+        raise RuntimeError('An active superuser is required to publish official catalogue observations.')
     if not admin_user:
         admin_user = User.objects.filter(email='ayush99wiz@gmail.com').first()
     if not admin_user:
@@ -83,9 +77,9 @@ def main():
         print(f"[WARN] Could not fetch NSE Equity Master: {e}")
         equity_master_map = {}
 
-    # 2. Fetch NSE Daily Bhavcopy (sec_bhavdata_full_20112026.csv)
+    # 2. Fetch NSE Bhavcopy (sec_bhavdata_full_18112026.csv)
     print("\n[2/6] Fetching NSE Daily Bhavcopy...")
-    bhavcopy_dates = ['20112026', '19112026', '18112026', '17112026']
+    bhavcopy_dates = ['18112026', '17112026', '14112026', '13112026']
     bhavcopy_data = {}
     effective_bhavcopy_date = None
 
@@ -132,7 +126,7 @@ def main():
     if effective_bhavcopy_date:
         try:
             parsed_d = datetime.strptime(effective_bhavcopy_date, '%d-%b-%Y')
-            effective_dt = datetime(parsed_d.year, parsed_d.month, parsed_d.day, 10, 0, 0, tzinfo=dt_timezone.utc)
+            effective_dt = datetime(parsed_d.year, parsed_d.month, parsed_d.day, 15, 30, 0, tzinfo=ZoneInfo('Asia/Kolkata')).astimezone(dt_timezone.utc)
         except Exception:
             pass
 
@@ -255,10 +249,6 @@ def main():
         source_ref: str = 'https://archives.nseindia.com',
         scheme_code: str | None = None,
         effective_time = effective_dt,
-        open_price: Decimal | None = None,
-        high_price: Decimal | None = None,
-        low_price: Decimal | None = None,
-        volume: int | None = None,
     ):
         nonlocal created_instruments, updated_instruments, published_observations
 
@@ -312,9 +302,21 @@ def main():
         elif asset_class == AssetClass.COMMODITY and 'GOLD' in symbol:
             q_unit = QuotationUnit.GRAMS_24K
 
-        # Coverage Policy
-        InstrumentCoverage.objects.update_or_create(
-            instrument=inst,
+        # Exact series identity and coverage policy are created before observations.
+        pricing_methodology = 'OFFICIAL_DAILY_FILE'
+        series, _ = MarketDataSeries.objects.using('market_data').get_or_create(
+            instrument_id=inst.id,
+            exchange=inst.exchange or '',
+            source=source,
+            price_type=price_type,
+            currency='INR',
+            unit=q_unit,
+            pricing_methodology=pricing_methodology,
+            adjustment_methodology='RAW',
+            defaults={'description': f'Official source series for {inst.symbol}'},
+        )
+        InstrumentCoverage.objects.using('market_data').update_or_create(
+            instrument_id=inst.id,
             defaults={
                 'price_type': price_type,
                 'cadence': CollectionCadence.EVERY_TRADING_DAY,
@@ -322,79 +324,35 @@ def main():
                 'unit': q_unit,
                 'preferred_source': source,
                 'status': CoverageStatus.ACTIVE,
-                'last_published_at': timezone.now(),
             }
         )
 
-        from apps.market_data.models.instrument_reference import MarketInstrumentReference
-        from apps.market_data.models.observation import TrustClass
-        ref, _ = MarketInstrumentReference.objects.using('market_data').update_or_create(
-            id=inst.id,
-            defaults={
-                'symbol': inst.symbol,
-                'name': inst.name,
-                'asset_class': inst.asset_class,
-                'product_type': inst.product_type or '',
-                'exchange': inst.exchange or '',
-                'currency': inst.currency or 'INR',
-                'isin': inst.isin,
-                'scheme_code': inst.scheme_code,
-                'is_active': inst.is_active,
-            }
-        )
+        # Published observations are immutable. Existing same-market-date records
+        # are left untouched; corrections must use the correction workflow.
+        market_date = effective_time.astimezone(ZoneInfo('Asia/Kolkata')).date()
+        day_start = datetime.combine(market_date, dt_time.min, tzinfo=ZoneInfo('Asia/Kolkata')).astimezone(dt_timezone.utc)
+        day_end = datetime.combine(market_date + timedelta(days=1), dt_time.min, tzinfo=ZoneInfo('Asia/Kolkata')).astimezone(dt_timezone.utc)
+        exists = PriceObservation.objects.using('market_data').filter(
+            instrument_id=inst.id, series_id=series.id,
+            effective_at__gte=day_start, effective_at__lt=day_end,
+            price_type=price_type, source=source, status=ObservationStatus.PUBLISHED,
+        ).exists()
+        if not exists:
+            observation = PriceObservation(
+                instrument_id=inst.id, series=series,
+                effective_at=effective_time, price_type=price_type,
+                value=price, currency='INR', unit=q_unit,
+                source=source, source_reference=source_ref,
+                status=ObservationStatus.DRAFT,
+                trust_class=TrustClass.VERIFIED_OFFICIAL,
+                is_synthetic=False, recorded_by_id=admin_user.id,
+            )
+            observation.save(using='market_data')
+            observation.status = ObservationStatus.PENDING_REVIEW
+            observation.save(using='market_data', update_fields=['status', 'updated_at'])
+            observation.publish(admin_user)
+            published_observations += 1
 
-        t_class = TrustClass.VERIFIED_OFFICIAL if ('OFFICIAL' in source or 'NSE' in source or 'BSE' in source or 'AMFI' in source) else TrustClass.VERIFIED_PERMITTED_SECONDARY
-        o_price = open_price if open_price is not None else price
-        h_price = high_price if high_price is not None else price
-        l_price = low_price if low_price is not None else price
-
-        # Price Observation
-        obs, obs_created = PriceObservation.objects.update_or_create(
-            instrument=inst,
-            effective_at=effective_time,
-            price_type=price_type,
-            source=source,
-            defaults={
-                'instrument_ref': ref,
-                'value': price,
-                'open_price': o_price,
-                'high_price': h_price,
-                'low_price': l_price,
-                'volume': volume,
-                'currency': 'INR',
-                'unit': q_unit,
-                'source_reference': source_ref,
-                'status': ObservationStatus.PUBLISHED,
-                'trust_class': t_class,
-                'is_synthetic': False,
-                'recorded_by': admin_user,
-                'published_by': admin_user,
-                'published_at': timezone.now(),
-            }
-        )
-        if obs_created or obs.status != ObservationStatus.PUBLISHED:
-            obs.status = ObservationStatus.PUBLISHED
-            obs.published_by = admin_user
-            obs.published_at = timezone.now()
-            obs.save()
-
-        # Sync directly to MarketDataPoint
-        MarketDataPoint.objects.update_or_create(
-            instrument=inst,
-            timestamp=effective_time,
-            interval='1D',
-            provider=source,
-            defaults={
-                'price': price,
-                'open_price': o_price,
-                'high_price': h_price,
-                'low_price': l_price,
-                'close_price': price,
-                'volume': volume,
-                'is_synthetic': False,
-            }
-        )
-        published_observations += 1
         return inst
 
     # --- A. INDICES ---
@@ -446,9 +404,6 @@ def main():
                 price_type=PriceType.CLOSE,
                 source='NSE_OFFICIAL' if 'Sensex' not in cname else 'BSE_OFFICIAL',
                 source_ref='https://archives.nseindia.com/content/indices',
-                open_price=price_entry.get('open'),
-                high_price=price_entry.get('high'),
-                low_price=price_entry.get('low'),
             )
 
     # --- B. SPECIFIC PRIORITY EQUITIES & SECTOR CHAMPIONS ---
@@ -507,10 +462,6 @@ def main():
                 price_type=PriceType.LTP,
                 source='NSE_OFFICIAL',
                 source_ref=f"https://archives.nseindia.com/products/content/sec_bhavdata_full_{effective_bhavcopy_date}.csv",
-                open_price=bhav.get('open'),
-                high_price=bhav.get('high'),
-                low_price=bhav.get('low'),
-                volume=bhav.get('volume'),
             )
 
     # --- C. BROAD EQUITY COVERAGE (UP TO 400+ ADDITIONAL NSE EQ STOCKS) ---
@@ -533,10 +484,6 @@ def main():
                     price_type=PriceType.LTP,
                     source='NSE_OFFICIAL',
                     source_ref=f"https://archives.nseindia.com/products/content/sec_bhavdata_full_{effective_bhavcopy_date}.csv",
-                    open_price=bhav.get('open'),
-                    high_price=bhav.get('high'),
-                    low_price=bhav.get('low'),
-                    volume=bhav.get('volume'),
                 )
                 broad_count += 1
                 if broad_count >= 350:
@@ -568,10 +515,6 @@ def main():
                 price_type=PriceType.LTP,
                 source='NSE_OFFICIAL',
                 source_ref=f"https://archives.nseindia.com/products/content/sec_bhavdata_full_{effective_bhavcopy_date}.csv",
-                open_price=bhav.get('open'),
-                high_price=bhav.get('high'),
-                low_price=bhav.get('low'),
-                volume=bhav.get('volume'),
             )
 
     # --- E. REITS & INVITS ---
@@ -601,10 +544,6 @@ def main():
                 price_type=PriceType.LTP,
                 source='NSE_OFFICIAL',
                 source_ref=f"https://archives.nseindia.com/products/content/sec_bhavdata_full_{effective_bhavcopy_date}.csv",
-                open_price=bhav.get('open'),
-                high_price=bhav.get('high'),
-                low_price=bhav.get('low'),
-                volume=bhav.get('volume'),
             )
 
     # --- F. SOVEREIGN GOLD BONDS (SGBs) ---
@@ -626,10 +565,6 @@ def main():
                 price_type=PriceType.LTP,
                 source='NSE_OFFICIAL',
                 source_ref=f"https://archives.nseindia.com/products/content/sec_bhavdata_full_{effective_bhavcopy_date}.csv",
-                open_price=bhav.get('open'),
-                high_price=bhav.get('high'),
-                low_price=bhav.get('low'),
-                volume=bhav.get('volume'),
             )
             sgb_count += 1
             if sgb_count >= 25:
@@ -637,32 +572,18 @@ def main():
     print(f"Added {sgb_count} Sovereign Gold Bond tranches.")
 
     # --- G. GOLD SPOT & PRECIOUS METALS ---
-    print("Ingesting Precious Metals / Commodities...")
-    # Standard 24K Physical / Digital Gold INR/gram and Silver INR/kg
-    upsert_instrument_with_price(
-        symbol='GOLD_24K_1G',
-        name='Digital Gold 24 Karat (99.9% Pure)',
-        asset_class=AssetClass.COMMODITY,
-        product_type='PHYSICAL_GOLD',
-        exchange='SPOT',
-        isin=None,
-        price=Decimal('7685.50'),
-        price_type=PriceType.LTP,
-        source='IBJA_OFFICIAL',
-        source_ref='https://ibjarates.org',
-    )
-    upsert_instrument_with_price(
-        symbol='SILVER_1KG',
-        name='Physical Silver 99.9% (1 Kilogram)',
-        asset_class=AssetClass.COMMODITY,
-        product_type='PHYSICAL_SILVER',
-        exchange='SPOT',
-        isin=None,
-        price=Decimal('91450.00'),
-        price_type=PriceType.LTP,
-        source='IBJA_OFFICIAL',
-        source_ref='https://ibjarates.org',
-    )
+    print("Registering precious-metal instruments without fabricated prices...")
+    for symbol, name, product_type in (
+        ('GOLD_24K_1G', 'Digital Gold 24 Karat (99.9% Pure)', 'PHYSICAL_GOLD'),
+        ('SILVER_1KG', 'Physical Silver 99.9% (1 Kilogram)', 'PHYSICAL_SILVER'),
+    ):
+        existing = Instrument.objects.filter(symbol=symbol, exchange='SPOT').first()
+        if existing is None:
+            Instrument.objects.create(
+                symbol=symbol, name=name, asset_class=AssetClass.COMMODITY,
+                product_type=product_type, exchange='SPOT', currency='INR',
+                status=InstrumentStatus.ACTIVE, is_active=True,
+            )
 
     # --- H. AMFI MUTUAL FUNDS ---
     print(f"Ingesting top Mutual Fund schemes from AMFI ({len(mf_schemes)} available)...")
@@ -715,7 +636,7 @@ def main():
     print("\n[6/6] Verifying Price Resolution & Database Consistency...")
     total_inst = Instrument.objects.count()
     total_obs = PriceObservation.objects.filter(status=ObservationStatus.PUBLISHED).count()
-    total_pts = MarketDataPoint.objects.count()
+    total_series = MarketDataSeries.objects.using('market_data').count()
 
     # Test resolving prices for sample instruments
     sample_symbols = ['NIFTY 50', 'RELIANCE', 'TCS', 'HDFCBANK', 'RVNL', 'HAL', 'NIFTYBEES', 'EMBASSY', 'GOLD_24K_1G']

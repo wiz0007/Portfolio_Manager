@@ -2,17 +2,20 @@ import csv
 import io
 import logging
 from datetime import date, timedelta
+from zoneinfo import ZoneInfo
 from typing import Optional
 
 from django.db import transaction
 from django.utils import timezone as dj_timezone
 
+from apps.market_data.models.instrument import Instrument
 from apps.market_data.models.coverage import (
     CollectionCadence,
     CoverageStatus,
     InstrumentCoverage,
 )
-from apps.market_data.models.observation import ObservationStatus, PriceObservation
+from apps.market_data.models.observation import ObservationStatus, PriceObservation, TrustClass
+from apps.market_data.models.series import MarketDataSeries
 from apps.market_data.models.worklist import (
     DueReason,
     MarketDataWorklist,
@@ -34,14 +37,9 @@ def sanitize_csv_cell(value: str) -> str:
     return s
 
 
-# Official Indian Exchange (NSE/BSE) Market Holidays (Standard Annual Calendar)
-INDIAN_MARKET_HOLIDAYS_MMDD = {
-    (1, 26),   # Republic Day
-    (5, 1),    # Maharashtra Day / Labour Day
-    (8, 15),   # Independence Day
-    (10, 2),   # Mahatma Gandhi Jayanti
-    (12, 25),  # Christmas
-}
+# No year-specific official exchange calendar is bundled. This fallback excludes
+# weekends only and explicitly records that official holidays are not verified.
+
 
 
 class MarketDataWorklistService:
@@ -52,11 +50,9 @@ class MarketDataWorklistService:
 
     @classmethod
     def is_trading_day(cls, target_date: date) -> bool:
-        """Indian equity market calendar check (Mon-Fri, excluding official exchange holidays)."""
+        """Weekday-only fallback; official exchange holidays are not verified here."""
         # Saturday is 5, Sunday is 6
         if target_date.weekday() >= 5:
-            return False
-        if (target_date.month, target_date.day) in INDIAN_MARKET_HOLIDAYS_MMDD:
             return False
         return True
 
@@ -67,32 +63,50 @@ class MarketDataWorklistService:
         Generates or updates the daily collection worklist for the target calendar date.
         Strictly idempotent: Preserves completed and skipped operational work on reruns.
         """
-        target_date = target_date or dj_timezone.now().date()
+        target_date = target_date or dj_timezone.now().astimezone(ZoneInfo('Asia/Kolkata')).date()
         is_market_open = cls.is_trading_day(target_date)
 
         worklist, _created = MarketDataWorklist.objects.using('market_data').get_or_create(
             worklist_date=target_date,
             defaults={
                 'status': WorklistStatus.GENERATED,
-                'metadata': {'is_trading_day': is_market_open},
+                'metadata': {'is_trading_day': is_market_open, 'calendar_source': 'WEEKDAY_FALLBACK', 'official_holiday_check': False},
             },
         )
 
-        active_coverages = InstrumentCoverage.objects.using('market_data').filter(
+        active_coverages = list(InstrumentCoverage.objects.using('market_data').filter(
             status=CoverageStatus.ACTIVE,
-        )
+        ))
+        instrument_map = {
+            instrument.id: instrument
+            for instrument in Instrument.objects.filter(id__in=[cov.instrument_id for cov in active_coverages])
+        }
 
         items_created = 0
 
         for cov in active_coverages:
-            inst = cov.instrument
+            inst = instrument_map.get(cov.instrument_id)
+            if inst is None:
+                logger.warning('Skipping coverage with missing canonical instrument %s', cov.instrument_id)
+                continue
             due_reason = None
 
-            # 1. First price check
-            latest_published = PriceObservation.objects.filter(
-                instrument=inst,
-                status=ObservationStatus.PUBLISHED,
-            ).order_by('-effective_at').first()
+            # 1. Resolve one exact series; never combine providers or quotation bases.
+            series_qs = MarketDataSeries.objects.using('market_data').filter(
+                instrument_id=cov.instrument_id, is_active=True,
+                price_type=cov.price_type, currency=cov.currency, unit=cov.unit,
+            )
+            preferred = list(series_qs.filter(source=cov.preferred_source)[:2])
+            candidates = preferred if preferred else list(series_qs.order_by('id')[:2])
+            if len(candidates) != 1:
+                logger.warning('Skipping worklist item for %s: expected one exact series, found %s', cov.instrument_id, len(candidates))
+                continue
+            series = candidates[0]
+            latest_published = PriceObservation.objects.using('market_data').filter(
+                instrument_id=cov.instrument_id, series_id=series.id,
+                status=ObservationStatus.PUBLISHED, is_synthetic=False,
+                trust_class__in=[TrustClass.VERIFIED_OFFICIAL, TrustClass.VERIFIED_PERMITTED_SECONDARY, TrustClass.MANUAL_VERIFIED, TrustClass.CORRECTED],
+            ).exclude(corrections__status=ObservationStatus.PUBLISHED).order_by('-effective_at').first()
 
             if not latest_published:
                 due_reason = DueReason.FIRST_PRICE
@@ -131,8 +145,11 @@ class MarketDataWorklistService:
                 instrument_id=inst.id if inst else cov.instrument_id,
             ).first()
 
-            if existing_item and existing_item.status == WorklistItemStatus.COMPLETED:
-                # Strictly preserve completed operational work (ERD Section 13.1)
+            if existing_item and existing_item.status in (
+                WorklistItemStatus.COMPLETED, WorklistItemStatus.SKIPPED,
+                WorklistItemStatus.IN_PROGRESS, WorklistItemStatus.NEEDS_REVIEW,
+            ):
+                # Preserve terminal operational work on deterministic regeneration.
                 continue
 
             last_price = latest_published.value if latest_published else None
@@ -140,7 +157,7 @@ class MarketDataWorklistService:
 
             _item, item_created = MarketDataWorklistItem.objects.using('market_data').update_or_create(
                 worklist=worklist,
-                instrument=inst,
+                instrument_id=cov.instrument_id,
                 defaults={
                     'coverage': cov,
                     'canonical_name': inst.name if inst else cov.symbol,
@@ -212,9 +229,12 @@ class MarketDataWorklistService:
             'schema_version',
             'worklist_item_id',
             'instrument_id',
+            'series_id',
             'symbol',
             'price_type',
             'value',
+            'reference_price',
+            'target_market_date',
             'currency',
             'unit',
             'effective_at',
@@ -224,20 +244,32 @@ class MarketDataWorklistService:
         ]
         writer.writerow(headers)
 
-        effective_str = f"{worklist.worklist_date.isoformat()}T10:00:00Z"
+        items = list(worklist.items.all().order_by('asset_class', 'symbol'))
+        series_by_instrument = {}
+        for series in MarketDataSeries.objects.using('market_data').filter(
+            instrument_id__in=[item.instrument_id for item in items], is_active=True
+        ).order_by('id'):
+            series_by_instrument.setdefault(series.instrument_id, []).append(series)
 
-        for item in worklist.items.all().order_by('asset_class', 'symbol'):
+        for item in items:
+            matching_series = [series for series in series_by_instrument.get(item.instrument_id, [])
+                               if series.price_type == item.expected_price_type
+                               and series.currency == item.currency and series.unit == item.unit][:2]
+            exact_series = matching_series[0] if len(matching_series) == 1 else None
             row = [
                 '1.0',
                 str(item.id),
                 str(item.instrument_id),
+                str(exact_series.id) if exact_series else '',
                 sanitize_csv_cell(item.symbol),
                 item.expected_price_type,
-                str(item.last_published_price or ''),
+                '',  # Operator must enter a newly collected value.
+                str(item.last_published_price) if item.last_published_price is not None else '',
+                worklist.worklist_date.isoformat(),
                 item.currency,
                 item.unit,
-                effective_str,
-                sanitize_csv_cell(item.source_guidance or 'MANUAL_VERIFIED'),
+                '',  # Actual source timestamp must be supplied; never fabricate one.
+                sanitize_csv_cell(exact_series.source if exact_series else ''),
                 '',
                 sanitize_csv_cell(item.notes),
             ]

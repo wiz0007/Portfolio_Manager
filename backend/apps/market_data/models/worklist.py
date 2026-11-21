@@ -72,7 +72,6 @@ class MarketDataWorklistItem(models.Model):
     )
     instrument_id = models.UUIDField(
         db_index=True,
-        default=uuid.uuid4,
         help_text="Canonical Instrument UUID (Primary DB)",
     )
     coverage = models.ForeignKey(

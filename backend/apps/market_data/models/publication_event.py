@@ -39,6 +39,9 @@ class MarketDataPublicationEvent(models.Model):
     class Meta:
         db_table = 'market_data_publication_events'
         ordering = ['created_at']
+        constraints = [
+            models.UniqueConstraint(fields=['observation_id'], name='uniq_pub_event_observation'),
+        ]
         indexes = [
             models.Index(fields=['status', 'created_at'], name='pub_event_status_idx'),
             models.Index(fields=['instrument_id', 'effective_at'], name='pub_event_inst_eff_idx'),
