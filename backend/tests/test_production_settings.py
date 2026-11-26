@@ -34,8 +34,24 @@ def test_production_settings_fails_fast_with_invalid_database_url():
 def test_production_settings_succeeds_with_valid_postgres_url():
     """Verify production settings loads properly with valid PostgreSQL URL."""
     valid_pg_url = "postgresql://user:pass@localhost:5432/testdb"
-    with mock.patch.dict(os.environ, {"DATABASE_URL": valid_pg_url}, clear=False):
+    valid_storage_url = "postgresql://user:pass@remotehost:5432/storagedb"
+    with mock.patch.dict(
+        os.environ,
+        {
+            "DATABASE_URL": valid_pg_url,
+            "NEON_STORAGE_DATABASE_URL": valid_storage_url,
+            "SECRET_KEY": "a-very-secure-production-secret-key-that-is-not-insecure",
+            "ALLOWED_HOSTS": "api.portfolio.example.com",
+            "EMAIL_BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+            "DEFAULT_FROM_EMAIL": "notifications@portfolio.example.com",
+            "FRONTEND_BASE_URL": "https://portfolio.example.com",
+            "CORS_ALLOWED_ORIGINS": "https://portfolio.example.com",
+            "CSRF_TRUSTED_ORIGINS": "https://portfolio.example.com",
+        },
+        clear=False,
+    ):
         reload_settings_modules()
         mod = importlib.import_module("config.settings.production")
         assert mod.DEBUG is False
         assert mod.DATABASES["default"]["NAME"] == "testdb"
+        assert mod.DATABASES["market_data"]["NAME"] == "storagedb"

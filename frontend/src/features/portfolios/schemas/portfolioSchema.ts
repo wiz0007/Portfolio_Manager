@@ -13,9 +13,7 @@ export const portfolioFormSchema = z.object({
     .optional(),
   base_currency: z.enum(
     ['INR', 'USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'SGD', 'CHF', 'AED'] as const,
-    {
-      errorMap: () => ({ message: 'Please select a supported currency.' }),
-    }
+    { message: 'Please select a supported currency.' }
   ),
 });
 

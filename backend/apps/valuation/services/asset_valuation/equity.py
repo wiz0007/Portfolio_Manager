@@ -92,6 +92,16 @@ class EquityValuationStrategy(BaseAssetValuationStrategy):
                     f"Failed to fetch market price for instrument {investment.instrument_id}: {e}"
                 )
 
+        if market_price is None and investment.instrument:
+            latest = getattr(investment.instrument, 'latest_quote', None)
+            if latest and latest.price is not None and getattr(latest, 'provider', '') != 'DEMO':
+                market_price = latest.price
+                source_name = getattr(latest, 'provider', 'MARKET_DATA')
+                source_ref = investment.instrument.symbol
+                is_synthetic = getattr(latest, 'is_synthetic', False)
+                if getattr(latest, 'timestamp', None):
+                    quote_ts = latest.timestamp
+
 
 
         # 2. If market price is unavailable, check for user explicit estimate

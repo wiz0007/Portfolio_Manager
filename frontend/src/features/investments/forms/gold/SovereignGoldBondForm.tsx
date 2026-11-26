@@ -5,6 +5,7 @@ import { Calculator } from 'lucide-react';
 import {
   sovereignGoldBondSchema,
   SovereignGoldBondFormData,
+  SovereignGoldBondInput,
 } from '../../schemas/investmentSchemas';
 import {
   FormField,
@@ -40,7 +41,7 @@ export const SovereignGoldBondForm: React.FC<SovereignGoldBondFormProps> = ({
     control,
     watch,
     formState: { errors },
-  } = useForm<SovereignGoldBondFormData>({
+  } = useForm<SovereignGoldBondInput, any, SovereignGoldBondFormData>({
     resolver: zodResolver(sovereignGoldBondSchema),
     defaultValues: {
       portfolio_id: portfolioId,

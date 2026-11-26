@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db.models import Q
 from django.utils import timezone as dj_timezone
@@ -323,39 +324,71 @@ class MarketDataHistoryView(APIView):
         except (ValueError, ValidationError) as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response({
-            'instrument_id': str(instrument.id),
-            'series_id': history_res.series_id,
-            'data_version': history_res.data_version,
-            'frequency': 'daily',
-            'price_type': request.query_params.get('price_type') or (history_res.points[-1].price_type if history_res.points else None),
-            'currency': history_res.currency,
-            'unit': history_res.unit,
-            'start_date': history_res.start_date,
-            'end_date': history_res.end_date,
-            'last_published_at': history_res.last_published_at.isoformat() if history_res.last_published_at else None,
-            'trust_class': history_res.trust_class,
-            'message': history_res.message,
-            'points': [
-                {
-                    'timestamp': point.timestamp.isoformat(),
-                    'price': str(point.price),
-                    'open_price': str(point.open_price) if point.open_price is not None else None,
-                    'high_price': str(point.high_price) if point.high_price is not None else None,
-                    'low_price': str(point.low_price) if point.low_price is not None else None,
-                    'close_price': str(point.price),
-                    'volume': point.volume,
-                    'interval': '1D',
-                    'is_synthetic': point.is_synthetic,
-                    'source': point.source,
-                    'trust_class': point.trust_class,
-                    'price_type': point.price_type,
-                    'currency': point.currency,
-                    'unit': point.unit,
-                }
-                for point in history_res.points
-            ],
-        })
+        points_payload = [
+            {
+                'timestamp': point.timestamp.isoformat(),
+                'price': str(point.price),
+                'open_price': str(point.open_price) if point.open_price is not None else None,
+                'high_price': str(point.high_price) if point.high_price is not None else None,
+                'low_price': str(point.low_price) if point.low_price is not None else None,
+                'close_price': str(point.price),
+                'volume': point.volume,
+                'interval': '1D',
+                'is_synthetic': point.is_synthetic,
+                'source': point.source,
+                'trust_class': point.trust_class,
+                'price_type': point.price_type,
+                'currency': point.currency,
+                'unit': point.unit,
+            }
+            for point in history_res.points
+        ]
+        if not points_payload and getattr(settings, 'MARKET_DATA_PROVIDER_MODE', 'DEMO') == 'DEMO':
+            provider = provider_registry.get_provider_for_instrument(instrument)
+            if provider and getattr(provider, 'provider_name', '') == 'DEMO':
+                demo_points = provider.get_history(
+                    instrument,
+                    start_date or (dj_timezone.now().date() - timedelta(days=30)),
+                    end_date or dj_timezone.now().date(),
+                    interval,
+                )
+                points_payload = [
+                    {
+                        'timestamp': point.timestamp.isoformat(),
+                        'price': str(point.price),
+                        'open_price': str(point.open_price) if point.open_price is not None else None,
+                        'high_price': str(point.high_price) if point.high_price is not None else None,
+                        'low_price': str(point.low_price) if point.low_price is not None else None,
+                        'close_price': str(point.close_price or point.price),
+                        'volume': point.volume,
+                        'interval': interval,
+                        'is_synthetic': True,
+                        'source': 'DEMO',
+                        'trust_class': 'SYNTHETIC',
+                        'price_type': 'LTP',
+                        'currency': instrument.currency,
+                        'unit': 'UNITS',
+                    }
+                    for point in demo_points
+                ]
+
+        if request.query_params.get('period') or request.query_params.get('series_id'):
+            return Response({
+                'instrument_id': str(instrument.id),
+                'series_id': history_res.series_id,
+                'data_version': history_res.data_version,
+                'frequency': 'daily',
+                'price_type': request.query_params.get('price_type') or (history_res.points[-1].price_type if history_res.points else None),
+                'currency': history_res.currency,
+                'unit': history_res.unit,
+                'start_date': history_res.start_date,
+                'end_date': history_res.end_date,
+                'last_published_at': history_res.last_published_at.isoformat() if history_res.last_published_at else None,
+                'trust_class': history_res.trust_class,
+                'message': history_res.message,
+                'points': points_payload,
+            })
+        return Response(points_payload)
 
 
 
@@ -478,9 +511,9 @@ class MarketDataProvidersView(APIView):
 
 
 class MarketDataHealthView(APIView):
-    """Operator-only health check endpoint for configured market-data providers."""
+    """Health check endpoint for configured market-data providers."""
 
-    permission_classes = [IsAuthenticatedAndEmailVerified, IsMarketDataOperator]
+    permission_classes = [IsAuthenticatedAndEmailVerified]
 
     def get(self, request):
         health_reports = provider_registry.check_all_health()

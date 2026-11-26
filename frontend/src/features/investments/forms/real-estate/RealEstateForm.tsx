@@ -5,6 +5,7 @@ import { Calculator } from 'lucide-react';
 import {
   realEstateSchema,
   RealEstateFormData,
+  RealEstateInput,
 } from '../../schemas/investmentSchemas';
 import {
   FormField,
@@ -54,7 +55,7 @@ export const RealEstateForm: React.FC<RealEstateFormProps> = ({
     control,
     watch,
     formState: { errors },
-  } = useForm<RealEstateFormData>({
+  } = useForm<RealEstateInput, any, RealEstateFormData>({
     resolver: zodResolver(realEstateSchema),
     defaultValues: {
       portfolio_id: portfolioId,

@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import {
   bondSchema,
   BondFormData,
+  BondInput,
 } from '../../schemas/investmentSchemas';
 import {
   FormField,
@@ -39,7 +40,7 @@ export const BondForm: React.FC<BondFormProps> = ({
     control,
     watch,
     formState: { errors },
-  } = useForm<BondFormData>({
+  } = useForm<BondInput, any, BondFormData>({
     resolver: zodResolver(bondSchema),
     defaultValues: {
       portfolio_id: portfolioId,

@@ -53,6 +53,9 @@ class InvestmentValuation(models.Model):
             raise ValidationError("Valuation snapshots are immutable point-in-time audit records and cannot be modified.")
         if self.amount is None or self.amount < 0:
             raise ValidationError({'amount': 'Valuation amount cannot be negative.'})
+        from decimal import Decimal
+        if self.amount is not None and isinstance(self.amount, Decimal):
+            self.amount = self.amount.quantize(Decimal('0.0001'))
         self.full_clean()
         super().save(*args, **kwargs)
 

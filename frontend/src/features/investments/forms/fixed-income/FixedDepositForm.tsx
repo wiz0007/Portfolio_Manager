@@ -5,6 +5,7 @@ import { Calculator } from 'lucide-react';
 import {
   fixedDepositSchema,
   FixedDepositFormData,
+  FixedDepositInput,
 } from '../../schemas/investmentSchemas';
 import {
   FormField,
@@ -59,7 +60,7 @@ export const FixedDepositForm: React.FC<FixedDepositFormProps> = ({
     control,
     watch,
     formState: { errors },
-  } = useForm<FixedDepositFormData>({
+  } = useForm<FixedDepositInput, any, FixedDepositFormData>({
     resolver: zodResolver(fixedDepositSchema),
     defaultValues: {
       portfolio_id: portfolioId,

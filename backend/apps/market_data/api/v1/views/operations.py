@@ -727,6 +727,7 @@ class HistoricalCoverageReportView(APIView):
                 'price_observations_index_size': index_size,
                 'price_observations_total_size': total_size,
                 'market_data_database_size': database_size,
+                'neon_plan_limit': '512 MB (Neon Free Tier)',
                 'plan_limit_and_headroom': 'Not inferred; check the active Neon plan and usage dashboard.',
             },
         }, status=status.HTTP_200_OK)

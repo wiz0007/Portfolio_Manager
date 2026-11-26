@@ -3,7 +3,7 @@ import { z } from 'zod';
 // Common currency enum
 export const currencyEnum = z.enum(
   ['INR', 'USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'SGD', 'CHF', 'AED'] as const,
-  { errorMap: () => ({ message: 'Please select a supported currency.' }) }
+  { message: 'Please select a supported currency.' }
 );
 
 // 1. Savings Account Form Schema
@@ -14,7 +14,7 @@ export const savingsAccountSchema = z.object({
   account_type: z.enum(['SAVINGS', 'CURRENT', 'SALARY', 'SENIOR_CITIZEN', 'NRE_NRO']),
   currency: currencyEnum.default('INR'),
   masked_account_number: z.string().max(20).optional(),
-  current_balance: z.number({ invalid_type_error: 'Balance must be a valid number.' }).min(0, 'Balance cannot be negative.'),
+  current_balance: z.number({ message: 'Balance must be a valid number.' }).min(0, 'Balance cannot be negative.'),
   balance_date: z.string().min(1, 'Balance effective date is required.'),
   interest_rate_pct: z.number().min(0, 'Interest rate cannot be negative.').max(30, 'Interest rate cannot exceed 30%.').optional(),
   interest_credit_frequency: z.enum(['MONTHLY', 'QUARTERLY', 'HALF_YEARLY', 'ANNUALLY']).default('QUARTERLY'),
@@ -299,16 +299,30 @@ export const agriculturalLandSchema = z
 
 // Inferred TypeScript Form Data Types
 export type SavingsAccountFormData = z.infer<typeof savingsAccountSchema>;
+export type SavingsAccountInput = z.input<typeof savingsAccountSchema>;
 export type CurrentAccountFormData = z.infer<typeof currentAccountSchema>;
+export type CurrentAccountInput = z.input<typeof currentAccountSchema>;
 export type FixedDepositFormData = z.infer<typeof fixedDepositSchema>;
+export type FixedDepositInput = z.input<typeof fixedDepositSchema>;
 export type RecurringDepositFormData = z.infer<typeof recurringDepositSchema>;
+export type RecurringDepositInput = z.input<typeof recurringDepositSchema>;
 export type BondFormData = z.infer<typeof bondSchema>;
+export type BondInput = z.input<typeof bondSchema>;
 export type StockFormData = z.infer<typeof stockSchema>;
+export type StockInput = z.input<typeof stockSchema>;
 export type MutualFundFormData = z.infer<typeof mutualFundSchema>;
+export type MutualFundInput = z.input<typeof mutualFundSchema>;
 export type PhysicalGoldFormData = z.infer<typeof physicalGoldSchema>;
+export type PhysicalGoldInput = z.input<typeof physicalGoldSchema>;
 export type DigitalGoldFormData = z.infer<typeof digitalGoldSchema>;
+export type DigitalGoldInput = z.input<typeof digitalGoldSchema>;
 export type GoldEtfFormData = z.infer<typeof goldEtfSchema>;
+export type GoldEtfInput = z.input<typeof goldEtfSchema>;
 export type SovereignGoldBondFormData = z.infer<typeof sovereignGoldBondSchema>;
+export type SovereignGoldBondInput = z.input<typeof sovereignGoldBondSchema>;
 export type RealEstateFormData = z.infer<typeof realEstateSchema>;
+export type RealEstateInput = z.input<typeof realEstateSchema>;
 export type AgriculturalLandFormData = z.infer<typeof agriculturalLandSchema>;
+export type AgriculturalLandInput = z.input<typeof agriculturalLandSchema>;
 export type CryptocurrencyFormData = z.infer<typeof cryptocurrencySchema>;
+export type CryptocurrencyInput = z.input<typeof cryptocurrencySchema>;

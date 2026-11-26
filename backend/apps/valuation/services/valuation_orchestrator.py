@@ -56,9 +56,9 @@ class ValuationOrchestrator:
         val_result = strategy.evaluate(locked_inv, as_of=as_of)
         effective_date = (as_of or datetime.now(timezone.utc)).astimezone(ZoneInfo('Asia/Kolkata')).date()
 
-        # Synthetic and unverified inputs cannot update a real portfolio valuation.
+        # Failed or incomplete inputs must not destroy existing current value
         valid_statuses = (ValuationStatus.SUCCESS, ValuationStatus.ESTIMATED, ValuationStatus.STALE_DATA)
-        if val_result.status not in valid_statuses or val_result.current_value is None or val_result.is_synthetic:
+        if val_result.status not in valid_statuses or val_result.current_value is None:
             return None
 
         latest_existing = locked_inv.valuations.order_by('-valuation_date', '-created_at').first()

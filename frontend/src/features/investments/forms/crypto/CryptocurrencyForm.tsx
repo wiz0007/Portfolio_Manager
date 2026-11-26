@@ -5,6 +5,7 @@ import { Calculator } from 'lucide-react';
 import {
   cryptocurrencySchema,
   CryptocurrencyFormData,
+  CryptocurrencyInput,
 } from '../../schemas/investmentSchemas';
 import {
   FormField,
@@ -57,7 +58,7 @@ export const CryptocurrencyForm: React.FC<CryptocurrencyFormProps> = ({
     control,
     watch,
     formState: { errors },
-  } = useForm<CryptocurrencyFormData>({
+  } = useForm<CryptocurrencyInput, any, CryptocurrencyFormData>({
     resolver: zodResolver(cryptocurrencySchema),
     defaultValues: {
       portfolio_id: portfolioId,

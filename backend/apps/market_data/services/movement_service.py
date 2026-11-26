@@ -110,9 +110,6 @@ class PriceMovementService:
 
         ref_dt = current_dt or dj_timezone.now()
         expected_currency = currency or instrument.currency
-        if not series_id:
-            return PriceMovement(None, None, None, None, MovementStatus.UNAVAILABLE,
-                                 'Exact series_id is required to calculate comparable movement.')
 
         # Look for previous published PriceObservation strictly before ref_dt (excluding superseded)
         obs_qs = (
@@ -123,14 +120,13 @@ class PriceMovementService:
                 trust_class__in=[TrustClass.VERIFIED_OFFICIAL, TrustClass.VERIFIED_PERMITTED_SECONDARY, TrustClass.MANUAL_VERIFIED, TrustClass.CORRECTED],
             )
             .exclude(corrections__status=ObservationStatus.PUBLISHED)
-            .filter(series_id=series_id, is_synthetic=False)
         )
+        if series_id:
+            obs_qs = obs_qs.filter(series_id=series_id, is_synthetic=False)
         if price_type:
             obs_qs = obs_qs.filter(price_type=price_type)
         if unit:
             obs_qs = obs_qs.filter(unit=unit)
-        if currency:
-            obs_qs = obs_qs.filter(currency=currency)
 
         prev_obs = obs_qs.order_by('-effective_at', '-published_at', '-created_at').first()
 

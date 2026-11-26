@@ -5,6 +5,7 @@ import { Calculator } from 'lucide-react';
 import {
   agriculturalLandSchema,
   AgriculturalLandFormData,
+  AgriculturalLandInput,
 } from '../../schemas/investmentSchemas';
 import {
   FormField,
@@ -74,7 +75,7 @@ export const AgriculturalLandForm: React.FC<AgriculturalLandFormProps> = ({
     control,
     watch,
     formState: { errors },
-  } = useForm<AgriculturalLandFormData>({
+  } = useForm<AgriculturalLandInput, any, AgriculturalLandFormData>({
     resolver: zodResolver(agriculturalLandSchema),
     defaultValues: {
       portfolio_id: portfolioId,

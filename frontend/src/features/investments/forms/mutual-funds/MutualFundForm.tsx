@@ -5,6 +5,7 @@ import { Calculator } from 'lucide-react';
 import {
   mutualFundSchema,
   MutualFundFormData,
+  MutualFundInput,
 } from '../../schemas/investmentSchemas';
 import {
   FormField,
@@ -67,7 +68,7 @@ export const MutualFundForm: React.FC<MutualFundFormProps> = ({
     control,
     watch,
     formState: { errors },
-  } = useForm<MutualFundFormData>({
+  } = useForm<MutualFundInput, any, MutualFundFormData>({
     resolver: zodResolver(mutualFundSchema),
     defaultValues: {
       portfolio_id: portfolioId,

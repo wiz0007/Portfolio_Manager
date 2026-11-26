@@ -4,9 +4,11 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 
 from apps.market_data.models.instrument import Instrument
+from apps.market_data.providers.registry import provider_registry
 from apps.market_data.services.history_service import MarketHistoryService
 from apps.market_data.services.movement_service import PriceMovementService
 from apps.market_data.services.price_resolver import PriceResolver
@@ -49,18 +51,83 @@ class MarketDataService:
     def get_latest_quote(cls, instrument: Instrument, force_refresh: bool = False) -> ResolvedQuote:
         # Provider responses are not silently promoted to published observations.
         resolved = PriceResolver.resolve_price(instrument)
+        if resolved.price is not None:
+            movement = PriceMovementService.calculate_movement(
+                instrument=instrument, current_price=resolved.price,
+                current_dt=resolved.effective_at, price_type=resolved.price_type,
+                currency=resolved.currency, unit=resolved.unit, series_id=resolved.series_id,
+            )
+            return ResolvedQuote(
+                id=resolved.observation_id, instrument_id=str(instrument.id), instrument=instrument,
+                price=resolved.price, open_price=None, high_price=None, low_price=None,
+                close_price=resolved.price, volume=None,
+                change_amount=movement.change_amount, change_percent=movement.change_percent,
+                provider=resolved.source, is_synthetic=resolved.is_synthetic,
+                interval='1D', timestamp=resolved.effective_at, currency=resolved.currency,
+                status=resolved.status, notes=resolved.notes,
+            )
+
+        from apps.market_data.models.market_data_point import MarketDataPoint
+        legacy = MarketDataPoint.objects.using('market_data').filter(instrument_id=instrument.id).order_by('-timestamp').first()
+        if legacy and legacy.price is not None:
+            return ResolvedQuote(
+                id=str(legacy.id),
+                instrument_id=str(instrument.id),
+                instrument=instrument,
+                price=legacy.price,
+                open_price=legacy.open_price,
+                high_price=legacy.high_price,
+                low_price=legacy.low_price,
+                close_price=legacy.close_price or legacy.price,
+                volume=legacy.volume,
+                change_amount=legacy.change_amount,
+                change_percent=legacy.change_percent,
+                provider=legacy.provider,
+                is_synthetic=legacy.is_synthetic,
+                interval=legacy.interval or '1D',
+                timestamp=legacy.timestamp,
+                currency=instrument.currency,
+                status='AVAILABLE',
+                notes='Legacy market data point.',
+            )
+
+        if getattr(settings, 'MARKET_DATA_PROVIDER_MODE', 'DEMO') == 'DEMO':
+            provider = provider_registry.get_provider_for_instrument(instrument)
+            if provider and getattr(provider, 'provider_name', '') == 'DEMO':
+                quote_data = provider.get_quote(instrument)
+                return ResolvedQuote(
+                    id=None,
+                    instrument_id=str(instrument.id),
+                    instrument=instrument,
+                    price=quote_data.price,
+                    open_price=quote_data.open_price,
+                    high_price=quote_data.high_price,
+                    low_price=quote_data.low_price,
+                    close_price=quote_data.close_price,
+                    volume=quote_data.volume,
+                    change_amount=quote_data.change_amount,
+                    change_percent=quote_data.change_percent,
+                    provider='DEMO',
+                    is_synthetic=True,
+                    interval='1D',
+                    timestamp=quote_data.timestamp,
+                    currency=instrument.currency,
+                    status='AVAILABLE',
+                    notes='Synthetic demo quote.',
+                )
+
         movement = PriceMovementService.calculate_movement(
-            instrument=instrument, current_price=resolved.price,
-            current_dt=resolved.effective_at, price_type=resolved.price_type,
-            currency=resolved.currency, unit=resolved.unit, series_id=resolved.series_id,
+            instrument=instrument, current_price=None,
+            current_dt=None, price_type=None,
+            currency=instrument.currency, unit='UNITS', series_id=None,
         )
         return ResolvedQuote(
-            id=resolved.observation_id, instrument_id=str(instrument.id), instrument=instrument,
-            price=resolved.price, open_price=None, high_price=None, low_price=None,
-            close_price=resolved.price, volume=None,
+            id=None, instrument_id=str(instrument.id), instrument=instrument,
+            price=None, open_price=None, high_price=None, low_price=None,
+            close_price=None, volume=None,
             change_amount=movement.change_amount, change_percent=movement.change_percent,
-            provider=resolved.source, is_synthetic=resolved.is_synthetic,
-            interval='1D', timestamp=resolved.effective_at, currency=resolved.currency,
+            provider='NONE', is_synthetic=False,
+            interval='1D', timestamp=None, currency=instrument.currency,
             status=resolved.status, notes=resolved.notes,
         )
 

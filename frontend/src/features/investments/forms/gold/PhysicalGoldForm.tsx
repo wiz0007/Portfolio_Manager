@@ -5,6 +5,7 @@ import { Calculator } from 'lucide-react';
 import {
   physicalGoldSchema,
   PhysicalGoldFormData,
+  PhysicalGoldInput,
 } from '../../schemas/investmentSchemas';
 import {
   FormField,
@@ -40,7 +41,7 @@ export const PhysicalGoldForm: React.FC<PhysicalGoldFormProps> = ({
     control,
     watch,
     formState: { errors },
-  } = useForm<PhysicalGoldFormData>({
+  } = useForm<PhysicalGoldInput, any, PhysicalGoldFormData>({
     resolver: zodResolver(physicalGoldSchema),
     defaultValues: {
       portfolio_id: portfolioId,

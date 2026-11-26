@@ -212,8 +212,8 @@ class PriceObservation(models.Model):
 
     def clean(self):
         super().clean()
-        if self.value is not None and self.value <= Decimal('0'):
-            raise ValidationError({'value': 'Price observation value must be strictly positive.'})
+        if self.value is not None and self.value < Decimal('0'):
+            raise ValidationError({'value': 'Price observation value must not be negative.'})
         if self.open_price is not None and self.open_price <= Decimal('0'):
             raise ValidationError({'open_price': 'Open price must be positive.'})
         if self.low_price is not None and self.high_price is not None and self.high_price < self.low_price:
@@ -312,9 +312,9 @@ class PriceObservation(models.Model):
                 self.published_at = timezone.now()
             if self.trust_class == TrustClass.UNVERIFIED:
                 src = (self.source or '').upper()
-                if any(k in src for k in ('OFFICIAL', 'NSE_OFFICIAL', 'BSE_OFFICIAL', 'AMFI', 'IBJA')):
+                if any(k in src for k in ('OFFICIAL', 'NSE', 'BSE', 'AMFI', 'IBJA', 'GOLD', 'MCX', 'RBI')):
                     self.trust_class = TrustClass.VERIFIED_OFFICIAL
-                elif any(k in src for k in ('YAHOO', 'MFAPI', 'FEED', 'SECONDARY')):
+                elif any(k in src for k in ('YAHOO', 'MFAPI', 'FEED', 'SECONDARY', 'HISTORICAL')):
                     self.trust_class = TrustClass.VERIFIED_PERMITTED_SECONDARY
                 elif any(k in src for k in ('MANUAL', 'CSV')):
                     self.trust_class = TrustClass.MANUAL_VERIFIED
@@ -414,9 +414,9 @@ class PriceObservation(models.Model):
             )
             if locked_observation.trust_class == TrustClass.UNVERIFIED:
                 src = (locked_observation.source or '').upper()
-                if any(k in src for k in ('OFFICIAL', 'NSE_OFFICIAL', 'BSE_OFFICIAL', 'AMFI', 'IBJA')):
+                if any(k in src for k in ('OFFICIAL', 'NSE', 'BSE', 'AMFI', 'IBJA', 'GOLD', 'MCX', 'RBI')):
                     locked_observation.trust_class = TrustClass.VERIFIED_OFFICIAL
-                elif any(k in src for k in ('YAHOO', 'MFAPI', 'FEED', 'SECONDARY')):
+                elif any(k in src for k in ('YAHOO', 'MFAPI', 'FEED', 'SECONDARY', 'HISTORICAL')):
                     locked_observation.trust_class = TrustClass.VERIFIED_PERMITTED_SECONDARY
                 elif any(k in src for k in ('MANUAL', 'CSV')):
                     locked_observation.trust_class = TrustClass.MANUAL_VERIFIED

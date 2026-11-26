@@ -126,6 +126,13 @@ class InvestmentTransaction(models.Model):
                 self.net_cash_flow = gross - f - t
             else:
                 self.net_cash_flow = gross
+
+        FOUR_PLACES = Decimal('0.0001')
+        for field in ('amount', 'gross_amount', 'net_cash_flow', 'fees', 'taxes', 'units', 'price_per_unit'):
+            val = getattr(self, field, None)
+            if val is not None and isinstance(val, Decimal):
+                setattr(self, field, val.quantize(FOUR_PLACES))
+
         self.full_clean()
         super().save(*args, **kwargs)
 

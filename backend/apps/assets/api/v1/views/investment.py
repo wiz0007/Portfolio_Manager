@@ -160,9 +160,6 @@ class InvestmentDetailView(generics.RetrieveUpdateDestroyAPIView):
     )
     def delete(self, request, *args, **kwargs):
         instance = self.get_object()
-        if instance.transactions.exists() or instance.valuations.exists():
-            return Response(
-                {'detail': 'An investment with transaction or valuation history cannot be deleted. Archive functionality must be used instead.'},
-                status=status.HTTP_409_CONFLICT,
-            )
+        instance.transactions.all().delete()
+        instance.valuations.all().delete()
         return super().delete(request, *args, **kwargs)

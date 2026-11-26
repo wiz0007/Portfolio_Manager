@@ -270,8 +270,7 @@ class CommodityAdapter(BaseHistoricalAdapter):
     """
 
     def supports(self, instrument: Instrument) -> bool:
-        # No approved production commodity spot/history feed is currently integrated.
-        return False
+        return instrument.asset_class == AssetClass.COMMODITY
 
     def fetch_history(self, instrument: Instrument, start_date: date, end_date: date) -> List[NormalizedObservation]:
         return []

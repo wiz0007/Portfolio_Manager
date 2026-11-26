@@ -41,10 +41,18 @@ class TrueDataMarketDataProvider(BaseMarketDataProvider):
         raise NotImplementedError('TrueData historical integration has not been implemented.')
 
     def health_check(self) -> ProviderHealth:
+        if self.has_credentials:
+            return ProviderHealth(
+                name=self.provider_name, is_available=False, latency_ms=None,
+                last_checked=datetime.now(timezone.utc),
+                message='TrueData live adapter methods are pending vendor implementation.',
+                mode='NOT_IMPLEMENTED',
+                metadata={'status': 'Live adapter pending implementation'},
+            )
         return ProviderHealth(
             name=self.provider_name, is_available=False, latency_ms=None,
             last_checked=datetime.now(timezone.utc),
-            message='Adapter implementation is pending; credentials alone do not indicate availability.',
-            mode='NOT_IMPLEMENTED',
-            metadata={'credentials_configured': self.has_credentials},
+            message='TrueData credentials pending from vendor. Demo provider active for equities in development.',
+            mode='PENDING_CREDENTIALS',
+            metadata={'status': 'Awaiting user / vendor API key and credentials'},
         )

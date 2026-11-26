@@ -118,6 +118,16 @@ class GoldValuationStrategy(BaseAssetValuationStrategy):
             except Exception:
                 pass
 
+        if rate_24k is None and investment.instrument:
+            latest = getattr(investment.instrument, 'latest_quote', None)
+            if latest and latest.price is not None and getattr(latest, 'provider', '') != 'DEMO':
+                rate_24k = latest.price
+                source_name = getattr(latest, 'provider', 'MARKET_DATA')
+                source_ref = investment.instrument.symbol
+                is_synthetic = getattr(latest, 'is_synthetic', False)
+                if getattr(latest, 'timestamp', None):
+                    obs_dt = latest.timestamp
+
 
 
         if rate_24k is None:

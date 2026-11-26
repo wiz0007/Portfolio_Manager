@@ -15,7 +15,7 @@ from apps.market_data.models.series import MarketDataSeries
 
 MARKET_TZ = ZoneInfo('Asia/Kolkata')
 PERIOD_DAYS_MAP = {
-    '1D': 1, '1W': 7, '1M': 30, '3M': 90,
+    '1D': 1, '1W': 14, '1M': 30, '3M': 90,
     '6M': 180, '1Y': 365, 'ALL': 365 * 5,
 }
 
@@ -79,12 +79,22 @@ class MarketHistoryService:
         today = dj_timezone.now().astimezone(MARKET_TZ).date()
         resolved_end = min(end_date or today, today)
         if period_upper == 'ALL' and not start_date:
-            resolved_start = resolved_end - timedelta(days=PERIOD_DAYS_MAP['ALL'])
+            earliest_obs = (
+                PriceObservation.objects.using('market_data')
+                .filter(instrument_id=instrument.id, status=ObservationStatus.PUBLISHED)
+                .order_by('effective_at')
+                .first()
+            )
+            resolved_start = (
+                earliest_obs.effective_at.astimezone(MARKET_TZ).date()
+                if earliest_obs
+                else (resolved_end - timedelta(days=PERIOD_DAYS_MAP['ALL']))
+            )
         else:
             resolved_start = start_date or (resolved_end - timedelta(days=PERIOD_DAYS_MAP[period_upper]))
         if resolved_start > resolved_end:
             raise ValidationError('start_date cannot be greater than end_date.')
-        if (resolved_end - resolved_start).days > 365 * 5:
+        if period_upper != 'ALL' and (resolved_end - resolved_start).days > 365 * 5:
             raise ValidationError('History range cannot exceed five years.')
 
         series_qs = MarketDataSeries.objects.using('market_data').filter(
@@ -111,8 +121,6 @@ class MarketHistoryService:
                 start_date=resolved_start.isoformat(), end_date=resolved_end.isoformat(),
                 currency=instrument.currency, message='No active market-data series exists for this instrument.',
             )
-        if len(series_list) > 1:
-            raise ValidationError('Multiple active price series match this instrument. Supply an exact series_id.')
         series = series_list[0]
 
         # Market dates are interpreted in Asia/Kolkata, then converted to UTC for storage queries.
@@ -120,12 +128,14 @@ class MarketHistoryService:
         end_dt = datetime.combine(resolved_end + timedelta(days=1), time.min, tzinfo=MARKET_TZ).astimezone(ZoneInfo('UTC'))
         observations_qs = PriceObservation.objects.using('market_data').filter(
             instrument_id=instrument.id,
-            series_id=series.id,
-            price_type=series.price_type,
             status=ObservationStatus.PUBLISHED,
             effective_at__gte=start_dt,
             effective_at__lt=end_dt,
         )
+        if series_id:
+            observations_qs = observations_qs.filter(series_id=series.id, price_type=series.price_type)
+        else:
+            observations_qs = observations_qs.filter(series_id__in=series_qs.values_list('id', flat=True))
         if getattr(settings, 'MARKET_DATA_PROVIDER_MODE', 'DEMO') != 'DEMO':
             observations_qs = observations_qs.filter(
                 is_synthetic=False,
