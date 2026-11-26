@@ -1,10 +1,9 @@
-from decimal import Decimal
 import uuid
-
-from django.core.exceptions import ImproperlyConfigured, ValidationError
-from django.apps import apps
+from decimal import Decimal
 
 import pytest
+from django.apps import apps
+from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -15,17 +14,17 @@ from apps.market_data.models.instrument import AssetClass, Instrument
 from apps.market_data.models.instrument_reference import MarketInstrumentReference
 from apps.market_data.models.instrument_request import InstrumentRequest
 from apps.market_data.models.observation import ObservationStatus, PriceObservation
-from apps.market_data.models.series import MarketDataSeries
 from apps.market_data.models.publication_event import (
     MarketDataPublicationEvent,
     PublicationEventStatus,
 )
+from apps.market_data.models.series import MarketDataSeries
 from apps.market_data.services.price_resolver import PriceResolver, ResolutionStatus
-from config.database.registry import get_model_owner, MODEL_OWNERSHIP
 from apps.market_data.services.sync_service import InstrumentIdentitySyncService
 from apps.portfolios.models import Portfolio
 from apps.users.models import User
 from apps.watchlists.models import WatchlistItem
+from config.database.registry import MODEL_OWNERSHIP, get_model_owner
 from config.database.routers import MarketDataRouter
 
 

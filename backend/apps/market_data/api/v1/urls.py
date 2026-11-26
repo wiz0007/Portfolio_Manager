@@ -9,8 +9,8 @@ from apps.market_data.api.v1.views import (
     MarketDataProvidersView,
     MarketDataQuoteView,
     MarketDataRefreshView,
-    MarketDataSeriesVersionView,
     MarketDataSeriesListView,
+    MarketDataSeriesVersionView,
 )
 from apps.market_data.api.v1.views.operations import (
     BulkPriceResolverView,

@@ -1,8 +1,8 @@
 import logging
 from typing import Any, Dict, List
 
-from django.utils import timezone
 from django.db import models
+from django.utils import timezone
 
 from apps.market_data.models.instrument import Instrument
 from apps.market_data.models.instrument_reference import MarketInstrumentReference

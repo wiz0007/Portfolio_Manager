@@ -1,9 +1,9 @@
 import logging
 import urllib.request
 from datetime import date, datetime, timezone
-from zoneinfo import ZoneInfo
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 from apps.market_data.providers.base import (
     BaseMarketDataProvider,

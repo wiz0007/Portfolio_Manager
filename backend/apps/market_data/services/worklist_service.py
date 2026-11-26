@@ -2,18 +2,18 @@ import csv
 import io
 import logging
 from datetime import date, timedelta
-from zoneinfo import ZoneInfo
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from django.db import transaction
 from django.utils import timezone as dj_timezone
 
-from apps.market_data.models.instrument import Instrument
 from apps.market_data.models.coverage import (
     CollectionCadence,
     CoverageStatus,
     InstrumentCoverage,
 )
+from apps.market_data.models.instrument import Instrument
 from apps.market_data.models.observation import ObservationStatus, PriceObservation, TrustClass
 from apps.market_data.models.series import MarketDataSeries
 from apps.market_data.models.worklist import (

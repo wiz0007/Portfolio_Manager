@@ -4,9 +4,9 @@ import urllib.request
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from zoneinfo import ZoneInfo
 from decimal import Decimal
 from typing import List, Optional
+from zoneinfo import ZoneInfo
 
 from apps.market_data.models.coverage import QuotationUnit
 from apps.market_data.models.instrument import AssetClass, Instrument

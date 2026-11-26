@@ -74,6 +74,7 @@ class CrossDbQuerySet(models.QuerySet):
     def delete(self):
         if self.model.__name__ == 'PriceObservation':
             from django.core.exceptions import ValidationError
+
             from apps.market_data.models.observation import ObservationStatus
             if self.filter(status=ObservationStatus.PUBLISHED).exists():
                 raise ValidationError('Published observations cannot be deleted with QuerySet.delete().')

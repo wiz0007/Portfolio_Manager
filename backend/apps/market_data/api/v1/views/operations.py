@@ -1,5 +1,7 @@
 import uuid
-from datetime import date, datetime, time as dt_time, timezone as dt_timezone
+from datetime import date, datetime
+from datetime import time as dt_time
+from datetime import timezone as dt_timezone
 from zoneinfo import ZoneInfo
 
 from django.db import transaction
@@ -9,7 +11,6 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from core.permissions import IsAuthenticatedAndEmailVerified
 
 from apps.market_data.api.v1.serializers.operations import (
     InstrumentCoverageSerializer,
@@ -38,7 +39,7 @@ from apps.market_data.permissions import (
 from apps.market_data.services.import_service import PriceImportService
 from apps.market_data.services.price_resolver import PriceResolver
 from apps.market_data.services.worklist_service import MarketDataWorklistService
-from apps.valuation.services.refresh_service import ValuationRefreshService
+from core.permissions import IsAuthenticatedAndEmailVerified
 
 
 class InstrumentRequestViewSet(viewsets.ModelViewSet):

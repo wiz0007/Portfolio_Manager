@@ -1,10 +1,10 @@
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import generics, status
 from rest_framework.response import Response
-from core.permissions import IsAuthenticatedAndEmailVerified as IsAuthenticated
 
 from apps.portfolios.api.v1.serializers import PortfolioSerializer
 from apps.portfolios.models import Portfolio
+from core.permissions import IsAuthenticatedAndEmailVerified as IsAuthenticated
 
 
 class PortfolioListCreateView(generics.ListCreateAPIView):

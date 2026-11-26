@@ -1,5 +1,6 @@
 import logging
-from datetime import date, datetime, time, timedelta, timezone as dt_timezone
+from datetime import date, datetime, time, timedelta
+from datetime import timezone as dt_timezone
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
@@ -16,8 +17,8 @@ from apps.market_data.adapters import (
     MutualFundAdapter,
     NormalizedObservation,
 )
-from apps.market_data.models.instrument import Instrument
 from apps.market_data.models.coverage import InstrumentCoverage
+from apps.market_data.models.instrument import Instrument
 from apps.market_data.models.observation import ObservationStatus, PriceObservation
 from apps.market_data.models.series import MarketDataSeries
 

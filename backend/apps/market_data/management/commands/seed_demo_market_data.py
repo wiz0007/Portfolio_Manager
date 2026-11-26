@@ -1,17 +1,17 @@
 from datetime import datetime, timedelta, timezone
 
-from django.core.management.base import BaseCommand, CommandError
 from django.contrib.auth import get_user_model
+from django.core.management.base import BaseCommand, CommandError
 
-from apps.market_data.models.instrument import AssetClass, Instrument
 from apps.market_data.models.coverage import InstrumentCoverage, PriceType, QuotationUnit
+from apps.market_data.models.instrument import AssetClass, Instrument
 from apps.market_data.models.observation import ObservationStatus, PriceObservation, TrustClass
-from apps.market_data.models.series import MarketDataSeries
 from apps.market_data.models.provider_mapping import ProviderInstrumentMapping
 from apps.market_data.models.reference_data import (
     InstrumentReferenceData,
     MarketCapCategory,
 )
+from apps.market_data.models.series import MarketDataSeries
 from apps.market_data.providers.demo_provider import DemoMarketDataProvider
 
 DEMO_INSTRUMENTS = [

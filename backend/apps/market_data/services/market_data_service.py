@@ -9,7 +9,7 @@ from django.core.exceptions import ValidationError
 from apps.market_data.models.instrument import Instrument
 from apps.market_data.services.history_service import MarketHistoryService
 from apps.market_data.services.movement_service import PriceMovementService
-from apps.market_data.services.price_resolver import PriceResolver, ResolutionStatus
+from apps.market_data.services.price_resolver import PriceResolver
 
 logger = logging.getLogger(__name__)
 

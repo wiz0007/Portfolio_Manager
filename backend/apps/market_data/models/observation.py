@@ -1,7 +1,7 @@
 import uuid
-from zoneinfo import ZoneInfo
-from decimal import Decimal
 from datetime import timedelta
+from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -263,6 +263,7 @@ class PriceObservation(models.Model):
         currencies, units or price types.
         """
         from django.db import transaction
+
         from apps.market_data.models.series import MarketDataSeries
 
         using = kwargs.get('using') or self._state.db or 'market_data'
@@ -371,6 +372,7 @@ class PriceObservation(models.Model):
         losing a monotonic series-version increment.
         """
         from django.db import transaction
+
         from apps.market_data.models.publication_event import MarketDataPublicationEvent
         from apps.market_data.models.series import MarketDataSeries
 

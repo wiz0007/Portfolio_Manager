@@ -1,10 +1,9 @@
 from decimal import Decimal
 
-from rest_framework import permissions, status
+from rest_framework import status
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from core.permissions import IsAuthenticatedAndEmailVerified
 
 from apps.assets.models.investment import Investment
 from apps.assets.models.valuations import InvestmentValuation
@@ -16,6 +15,7 @@ from apps.valuation.api.v1.serializers import (
 )
 from apps.valuation.services.calculation.projection_engine import ProjectionEngine
 from apps.valuation.services.valuation_orchestrator import ValuationOrchestrator
+from core.permissions import IsAuthenticatedAndEmailVerified
 
 
 class BaseInvestmentScopedView(APIView):

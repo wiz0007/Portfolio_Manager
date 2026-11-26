@@ -1,13 +1,13 @@
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
-from rest_framework import permissions, status, viewsets
+from rest_framework import status, viewsets
 from rest_framework.response import Response
-from core.permissions import IsAuthenticatedAndEmailVerified
 
 from apps.watchlists.api.v1.serializers import (
     WatchlistAddSerializer,
     WatchlistItemResponseSerializer,
 )
 from apps.watchlists.services.watchlist_service import WatchlistService
+from core.permissions import IsAuthenticatedAndEmailVerified
 
 
 class WatchlistViewSet(viewsets.ViewSet):

@@ -5,8 +5,11 @@ from typing import List
 from django.conf import settings
 
 from apps.market_data.providers.base import (
-    BaseMarketDataProvider, HistoricalPoint, ProviderCapabilities,
-    ProviderHealth, QuoteData,
+    BaseMarketDataProvider,
+    HistoricalPoint,
+    ProviderCapabilities,
+    ProviderHealth,
+    QuoteData,
 )
 
 

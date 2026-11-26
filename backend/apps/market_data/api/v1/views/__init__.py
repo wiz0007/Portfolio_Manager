@@ -1,21 +1,20 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from django.core.exceptions import ValidationError
 from django.db.models import Q
 from django.utils import timezone as dj_timezone
-from rest_framework import permissions, status, viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from core.permissions import IsAuthenticatedAndEmailVerified
 
 from apps.market_data.api.v1.serializers import (
     InstrumentSerializer,
     QuoteSerializer,
 )
-from apps.market_data.models.instrument import Instrument
 from apps.market_data.models.coverage import PriceType, QuotationUnit
+from apps.market_data.models.instrument import Instrument
 from apps.market_data.permissions import IsMarketDataOperator
 from apps.market_data.providers.registry import provider_registry
 from apps.market_data.services.history_service import MarketHistoryService
@@ -23,6 +22,7 @@ from apps.market_data.services.market_data_service import MarketDataService
 from apps.market_data.services.movement_service import PriceMovementService
 from apps.market_data.services.price_resolver import PriceResolver
 from apps.market_data.services.search_service import InstrumentSearchService
+from core.permissions import IsAuthenticatedAndEmailVerified
 
 
 class InstrumentViewSet(viewsets.ReadOnlyModelViewSet):
@@ -393,8 +393,9 @@ class MarketDataSeriesListView(APIView):
         ])
 
     def post(self, request):
-        from apps.market_data.models.series import MarketDataSeries
         from rest_framework.exceptions import ValidationError as DRFValidationError
+
+        from apps.market_data.models.series import MarketDataSeries
 
         instrument_id = request.data.get('instrument_id')
         price_type = str(request.data.get('price_type', '')).upper()

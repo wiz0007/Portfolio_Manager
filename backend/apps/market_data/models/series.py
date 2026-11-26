@@ -1,7 +1,7 @@
 import uuid
 
-from django.db import models
 from django.core.exceptions import ValidationError
+from django.db import models
 
 from apps.market_data.models.coverage import PriceType, QuotationUnit
 from apps.market_data.models.instrument_reference import MarketInstrumentReference

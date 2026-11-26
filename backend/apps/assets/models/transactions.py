@@ -78,6 +78,7 @@ class InvestmentTransaction(models.Model):
 
     def clean(self):
         from decimal import Decimal
+
         from django.core.exceptions import ValidationError
 
         super().clean()

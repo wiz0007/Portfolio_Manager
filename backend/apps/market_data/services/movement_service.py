@@ -3,9 +3,9 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from django.utils import timezone as dj_timezone
 from django.db.models import F, Window
 from django.db.models.functions import RowNumber
+from django.utils import timezone as dj_timezone
 
 from apps.market_data.models.instrument import Instrument
 from apps.market_data.models.observation import ObservationStatus, PriceObservation, TrustClass

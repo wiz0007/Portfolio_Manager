@@ -1,16 +1,16 @@
+import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
-import uuid
 from decimal import Decimal
 from typing import List, Optional
 from zoneinfo import ZoneInfo
 
-from django.core.exceptions import ValidationError
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.utils import timezone as dj_timezone
 
-from apps.market_data.models.observation import ObservationStatus, PriceObservation
 from apps.market_data.models.coverage import InstrumentCoverage
+from apps.market_data.models.observation import ObservationStatus, PriceObservation
 from apps.market_data.models.series import MarketDataSeries
 
 MARKET_TZ = ZoneInfo('Asia/Kolkata')

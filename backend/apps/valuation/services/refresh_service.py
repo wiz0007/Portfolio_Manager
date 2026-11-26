@@ -1,8 +1,8 @@
 import logging
 from typing import Any, Dict, List
 
-from django.utils import timezone
 from django.db import models
+from django.utils import timezone
 
 from apps.assets.models.investment import Investment
 from apps.market_data.models.instrument import Instrument
@@ -21,7 +21,7 @@ class ValuationRefreshService:
     MAX_EVENTS_PER_INSTRUMENT_BATCH = 5000
 
     @classmethod
-    def refresh_holdings_for_instrument(cls, instrument: Instrument, event_id: str = None) -> Dict[str, Any]:
+    def refresh_holdings_for_instrument(cls, instrument: Instrument, event_id: str | None = None) -> Dict[str, Any]:
         """
         Finds all investments linked to the instrument, recalculates valuation using the authoritative
         asset valuation strategy, and records snapshots on Primary Database ('default').
