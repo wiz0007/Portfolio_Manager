@@ -221,8 +221,10 @@ export const HoldingsOverview: React.FC<HoldingsOverviewProps> = ({
                       {/* Price Freshness Badge */}
                       <td className="py-3 px-2 text-center">
                         <PriceFreshnessBadge
-                          status={holding.price_freshness as any}
-                          effectiveAt={holding.valuation_date}
+                          status={holding.price_freshness}
+                          effectiveAt={holding.price_effective_at}
+                          publishedAt={holding.price_published_at}
+                          ageSeconds={holding.price_age_seconds}
                         />
                       </td>
 
@@ -270,8 +272,10 @@ export const HoldingsOverview: React.FC<HoldingsOverviewProps> = ({
                       </div>
                     </div>
                     <PriceFreshnessBadge
-                      status={holding.price_freshness as any}
-                      effectiveAt={holding.valuation_date}
+                      status={holding.price_freshness}
+                      effectiveAt={holding.price_effective_at}
+                      publishedAt={holding.price_published_at}
+                      ageSeconds={holding.price_age_seconds}
                     />
                   </div>
 

@@ -106,7 +106,7 @@ class InstrumentRequestApproveSerializer(serializers.Serializer):
     # Price Coverage Policy parameters
     cadence = serializers.ChoiceField(
         choices=CollectionCadence.choices,
-        default=CollectionCadence.EVERY_TRADING_DAY,
+        default=CollectionCadence.WEEKLY,
     )
     price_type = serializers.ChoiceField(
         choices=PriceType.choices,
@@ -116,7 +116,7 @@ class InstrumentRequestApproveSerializer(serializers.Serializer):
         choices=QuotationUnit.choices,
         default=QuotationUnit.UNITS,
     )
-    freshness_hours = serializers.IntegerField(default=24, min_value=1)
+    freshness_hours = serializers.IntegerField(default=168, min_value=1)
 
 
 class InstrumentRequestMatchSerializer(serializers.Serializer):
@@ -205,7 +205,7 @@ class PriceObservationSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
         validators = []
-        extra_kwargs = {'series': {'required': True}}
+        extra_kwargs = {'series': {'required': False}}
         read_only_fields = [
             'id',
             'status',
@@ -218,6 +218,27 @@ class PriceObservationSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if not attrs.get('series'):
+            inst_id = attrs.get('instrument_id') or (self.instance.instrument_id if self.instance else None)
+            if inst_id:
+                from apps.market_data.models.instrument import Instrument
+                from apps.market_data.models.series import MarketDataSeries
+                inst = Instrument.objects.using('default').filter(pk=inst_id).first()
+                if inst:
+                    series, _ = MarketDataSeries.objects.using('market_data').get_or_create(
+                        instrument_id=inst_id,
+                        exchange=inst.exchange or '',
+                        source=attrs.get('source', 'MANUAL'),
+                        price_type=attrs.get('price_type', PriceType.LTP),
+                        currency=attrs.get('currency', 'INR'),
+                        unit=attrs.get('unit', QuotationUnit.UNITS),
+                        defaults={'description': f'Auto-created series for {inst.symbol}', 'is_active': True},
+                    )
+                    attrs['series'] = series
+        return attrs
 
     def validate_value(self, value):
         if value <= Decimal('0'):

@@ -98,6 +98,17 @@ class MarketDataWorklistService:
             )
             preferred = list(series_qs.filter(source=cov.preferred_source)[:2])
             candidates = preferred if preferred else list(series_qs.order_by('id')[:2])
+            if len(candidates) == 0:
+                series, _ = MarketDataSeries.objects.using('market_data').get_or_create(
+                    instrument_id=cov.instrument_id,
+                    exchange=inst.exchange or '',
+                    source=cov.preferred_source or 'MANUAL',
+                    price_type=cov.price_type,
+                    currency=cov.currency,
+                    unit=cov.unit,
+                    defaults={'is_active': True, 'description': f'Default series for {inst.symbol}'}
+                )
+                candidates = [series]
             if len(candidates) != 1:
                 logger.warning('Skipping worklist item for %s: expected one exact series, found %s', cov.instrument_id, len(candidates))
                 continue
@@ -147,7 +158,6 @@ class MarketDataWorklistService:
 
             if existing_item and existing_item.status in (
                 WorklistItemStatus.COMPLETED, WorklistItemStatus.SKIPPED,
-                WorklistItemStatus.IN_PROGRESS, WorklistItemStatus.NEEDS_REVIEW,
             ):
                 # Preserve terminal operational work on deterministic regeneration.
                 continue

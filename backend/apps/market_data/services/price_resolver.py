@@ -115,8 +115,12 @@ class PriceResolver:
         now = dj_timezone.now()
         obs_dt = as_of or now
         coverage = InstrumentCoverage.objects.using('market_data').filter(instrument_id=instrument.id).first()
-        target_type = price_type or (coverage.price_type if coverage else None)
-        series_qs = MarketDataSeries.objects.using('market_data').filter(instrument_id=instrument.id, is_active=True)
+        # An explicit series selection is authoritative. Coverage.price_type is
+        # only the default when the caller has not selected a concrete series.
+        target_type = price_type or (coverage.price_type if coverage and not series_id else None)
+        series_qs = MarketDataSeries.objects.using('market_data').filter(
+            instrument_id=instrument.id, is_active=True
+        )
         if target_type:
             series_qs = series_qs.filter(price_type=target_type)
         if series_id:
@@ -140,10 +144,22 @@ class PriceResolver:
         pending = False
         if series:
             observation = (PriceObservation.objects.using('market_data').filter(
-                instrument_id=instrument.id, series_id=series.id, price_type=series.price_type,
-                status=ObservationStatus.PUBLISHED, effective_at__lte=obs_dt,
-            ).exclude(corrections__status=ObservationStatus.PUBLISHED)
-             .order_by('-effective_at', '-published_at', '-created_at').first())
+                instrument_id=instrument.id,
+                series_id=series.id,
+                price_type=series.price_type,
+                status=ObservationStatus.PUBLISHED,
+                effective_at__lte=obs_dt,
+                # Historical resolution must not expose observations that were
+                # published after the requested as-of instant. This also prevents
+                # later corrections from rewriting what the system knew earlier.
+                published_at__isnull=False,
+                published_at__lte=obs_dt,
+            ).exclude(
+                corrections__status=ObservationStatus.PUBLISHED,
+                corrections__published_at__isnull=False,
+                corrections__published_at__lte=obs_dt,
+                corrections__effective_at__lte=obs_dt,
+            ).order_by('-effective_at', '-published_at', '-created_at').first())
             if observation is None:
                 pending = PriceObservation.objects.using('market_data').filter(
                     instrument_id=instrument.id, series_id=series.id,
@@ -184,9 +200,17 @@ class PriceResolver:
         latest_by_series = {}
         if series_ids:
             observations = (PriceObservation.objects.using('market_data').filter(
-                series_id__in=series_ids, status=ObservationStatus.PUBLISHED, effective_at__lte=obs_dt,
-            ).exclude(corrections__status=ObservationStatus.PUBLISHED)
-             .order_by('series_id', '-effective_at', '-published_at', '-created_at'))
+                series_id__in=series_ids,
+                status=ObservationStatus.PUBLISHED,
+                effective_at__lte=obs_dt,
+                published_at__isnull=False,
+                published_at__lte=obs_dt,
+            ).exclude(
+                corrections__status=ObservationStatus.PUBLISHED,
+                corrections__published_at__isnull=False,
+                corrections__published_at__lte=obs_dt,
+                corrections__effective_at__lte=obs_dt,
+            ).order_by('series_id', '-effective_at', '-published_at', '-created_at'))
             for obs in observations:
                 latest_by_series.setdefault(obs.series_id, obs)
         missing_series_ids = [sid for sid in series_ids if sid not in latest_by_series]

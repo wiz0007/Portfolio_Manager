@@ -6,31 +6,6 @@ from django.db import migrations, models
 def assign_unambiguous_series(apps, schema_editor):
     """Attach legacy published observations only when exactly one exact series matches."""
     alias = schema_editor.connection.alias
-    if schema_editor.connection.vendor == 'postgresql':
-        schema_editor.execute("""
-            WITH single_series AS (
-                SELECT id AS target_series_id, instrument_id, price_type, currency, unit, source
-                FROM (
-                    SELECT id, instrument_id, price_type, currency, unit, source,
-                           COUNT(*) OVER (PARTITION BY instrument_id, price_type, currency, unit, source) as cnt
-                    FROM market_data_series
-                    WHERE is_active = TRUE
-                ) sub
-                WHERE cnt = 1
-            )
-            UPDATE price_observations o
-            SET series_id = s.target_series_id
-            FROM single_series s
-            WHERE o.status = 'PUBLISHED'
-              AND o.series_id IS NULL
-              AND o.instrument_id = s.instrument_id
-              AND o.price_type = s.price_type
-              AND o.currency = s.currency
-              AND o.unit = s.unit
-              AND o.source = s.source;
-        """)
-        return
-
     Observation = apps.get_model('market_data', 'PriceObservation')
     Series = apps.get_model('market_data', 'MarketDataSeries')
     rows = Observation.objects.using(alias).filter(status='PUBLISHED', series_id__isnull=True).iterator(chunk_size=500)
@@ -49,25 +24,8 @@ def assign_unambiguous_series(apps, schema_editor):
 
 
 def deduplicate_instrument_sync_events(apps, schema_editor):
-    alias = schema_editor.connection.alias
-    if schema_editor.connection.vendor == 'postgresql':
-        schema_editor.execute("""
-            DELETE FROM instrument_sync_events
-            WHERE id IN (
-                SELECT id
-                FROM (
-                    SELECT id, ROW_NUMBER() OVER (
-                        PARTITION BY instrument_id, identity_version 
-                        ORDER BY created_at DESC, id
-                    ) as rn
-                    FROM instrument_sync_events
-                ) sub
-                WHERE rn > 1
-            );
-        """)
-        return
-
     from django.db.models import Count
+    alias = schema_editor.connection.alias
     Event = apps.get_model('market_data', 'InstrumentSyncEvent')
     duplicate_keys = list(Event.objects.using(alias).values(
         'instrument_id', 'identity_version'
@@ -83,25 +41,8 @@ def deduplicate_instrument_sync_events(apps, schema_editor):
 
 
 def deduplicate_publication_events(apps, schema_editor):
-    alias = schema_editor.connection.alias
-    if schema_editor.connection.vendor == 'postgresql':
-        schema_editor.execute("""
-            DELETE FROM market_data_publication_events
-            WHERE id IN (
-                SELECT id
-                FROM (
-                    SELECT id, ROW_NUMBER() OVER (
-                        PARTITION BY observation_id 
-                        ORDER BY created_at, id
-                    ) as rn
-                    FROM market_data_publication_events
-                ) sub
-                WHERE rn > 1
-            );
-        """)
-        return
-
     from django.db.models import Count
+    alias = schema_editor.connection.alias
     Event = apps.get_model('market_data', 'MarketDataPublicationEvent')
     duplicate_ids = list(Event.objects.using(alias).values('observation_id').annotate(
         total=Count('id')
@@ -230,7 +171,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name='priceobservation',
             constraint=models.UniqueConstraint(
-                condition=models.Q(('status', 'PUBLISHED')),
+                condition=models.Q(('status', 'PUBLISHED'), ('correction_of__isnull', True)),
                 fields=('instrument_id', 'series', 'effective_at', 'price_type', 'source'),
                 name='uniq_published_obs_series',
             ),

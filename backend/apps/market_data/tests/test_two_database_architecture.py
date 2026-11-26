@@ -1,4 +1,5 @@
 from decimal import Decimal
+import uuid
 
 from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.apps import apps
@@ -15,7 +16,10 @@ from apps.market_data.models.instrument_reference import MarketInstrumentReferen
 from apps.market_data.models.instrument_request import InstrumentRequest
 from apps.market_data.models.observation import ObservationStatus, PriceObservation
 from apps.market_data.models.series import MarketDataSeries
-from apps.market_data.models.publication_event import MarketDataPublicationEvent
+from apps.market_data.models.publication_event import (
+    MarketDataPublicationEvent,
+    PublicationEventStatus,
+)
 from apps.market_data.services.price_resolver import PriceResolver, ResolutionStatus
 from config.database.registry import get_model_owner, MODEL_OWNERSHIP
 from apps.market_data.services.sync_service import InstrumentIdentitySyncService
@@ -84,6 +88,91 @@ class TestTwoDatabaseArchitecture:
         from apps.market_data.models.provider_mapping import ProviderInstrumentMapping
         assert router.allow_relation(Instrument(), MarketDataPoint()) is False
         assert router.allow_relation(Instrument(), ProviderInstrumentMapping()) is False
+
+    def test_publication_is_idempotent_and_series_version_is_monotonic(self):
+        publisher = User.objects.create_user(
+            email='publication_lock_test@example.com',
+            password='StrongPassword123!',
+            is_staff=True,
+            is_active=True,
+        )
+        instrument = Instrument.objects.create(
+            symbol='PUB_LOCK', name='Publication Lock Test', asset_class=AssetClass.EQUITY,
+            exchange='NSE', currency='INR',
+        )
+        observation = PriceObservation.objects.create(
+            instrument_id=instrument.id,
+            price_type='LTP',
+            value=Decimal('125.00'),
+            currency='INR',
+            unit='UNITS',
+            effective_at=timezone.now(),
+            source='MANUAL_VERIFIED',
+            status=ObservationStatus.DRAFT,
+            recorded_by_id=publisher.id,
+        )
+        observation.submit_for_review()
+        observation.refresh_from_db(using='market_data')
+        series = MarketDataSeries.objects.using('market_data').get(pk=observation.series_id)
+        initial_version = series.data_version
+
+        observation.publish(publisher)
+        observation.publish(publisher)
+
+        series.refresh_from_db(using='market_data')
+        assert series.data_version == initial_version + 1
+        assert MarketDataPublicationEvent.objects.using('market_data').filter(
+            observation_id=observation.id
+        ).count() == 1
+        assert PriceObservation.objects.using('market_data').get(pk=observation.id).status == ObservationStatus.PUBLISHED
+
+        series.data_version += 1
+        with pytest.raises(ValidationError):
+            series.save(using='market_data', update_fields=['data_version', 'updated_at'])
+
+    def test_publication_outbox_coalesces_backfill_events_per_instrument(self, monkeypatch):
+        from apps.valuation.services.refresh_service import ValuationRefreshService
+
+        instrument = Instrument.objects.create(
+            symbol='OUTBOX_BATCH', name='Outbox Batch Test', asset_class=AssetClass.EQUITY,
+            exchange='NSE', currency='INR',
+        )
+        created_ids = []
+        for index in range(3):
+            event = MarketDataPublicationEvent.objects.using('market_data').create(
+                observation_id=uuid.uuid4(),
+                instrument_id=instrument.id,
+                effective_at=timezone.now(),
+                price_type='LTP',
+                value=Decimal('100.00') + Decimal(index),
+                currency='INR',
+                data_version=index + 1,
+                status=PublicationEventStatus.PENDING,
+            )
+            created_ids.append(event.id)
+
+        refresh_calls = []
+
+        def fake_refresh(cls, selected_instrument, event_id=None):
+            refresh_calls.append((selected_instrument.id, event_id))
+            return {'total_holdings': 0, 'refreshed_count': 0, 'failed_count': 0, 'errors': []}
+
+        monkeypatch.setattr(
+            ValuationRefreshService,
+            'refresh_holdings_for_instrument',
+            classmethod(fake_refresh),
+        )
+
+        result = ValuationRefreshService.process_pending_publication_events(limit=10)
+
+        assert result == {'processed': 3, 'failed': 0}
+        assert len(refresh_calls) == 1
+        assert refresh_calls[0][0] == instrument.id
+        assert refresh_calls[0][1] == str(created_ids[0])
+        assert not MarketDataPublicationEvent.objects.using('market_data').filter(
+            id__in=created_ids,
+            status__in=[PublicationEventStatus.PENDING, PublicationEventStatus.FAILED],
+        ).exists()
 
     def test_instrument_identity_synchronization(self):
         test_inst = Instrument.objects.create(

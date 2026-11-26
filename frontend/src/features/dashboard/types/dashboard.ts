@@ -1,3 +1,5 @@
+import { PriceFreshnessStatus } from '@/features/watchlists/types';
+
 export interface DashboardUser {
   id: string;
   full_name: string;
@@ -35,6 +37,8 @@ export interface DataCompleteness {
   unvalued_holdings: number;
   stale_holdings: number;
   missing_price_holdings: number;
+  awaiting_verification_holdings?: number;
+  unsupported_holdings?: number;
   completeness_percentage: number;
 }
 
@@ -103,8 +107,12 @@ export interface HoldingOverviewItem {
   gain_loss_percentage: string | null;
   valuation_date: string;
   valuation_source: string;
-  price_freshness: string;
+  valuation_status?: string;
+  price_freshness: PriceFreshnessStatus;
   is_stale: boolean;
+  price_effective_at: string | null;
+  price_published_at: string | null;
+  price_age_seconds: number | null;
 }
 
 export interface HoldingsOverviewResponse {

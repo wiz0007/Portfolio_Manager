@@ -77,11 +77,14 @@ export function useDashboardWatchlistPreview(limit: number = 5) {
   });
 }
 
+export function invalidateDashboardQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: DASHBOARD_OVERVIEW_QUERY_KEY });
+  queryClient.invalidateQueries({ queryKey: DASHBOARD_BASE_KEY });
+}
+
 export function useInvalidateDashboard() {
   const queryClient = useQueryClient();
   return () => {
-    queryClient.invalidateQueries({ queryKey: DASHBOARD_OVERVIEW_QUERY_KEY });
-    queryClient.invalidateQueries({ queryKey: DASHBOARD_BASE_KEY });
-    queryClient.invalidateQueries({ queryKey: ['watchlist'] });
+    invalidateDashboardQueries(queryClient);
   };
 }

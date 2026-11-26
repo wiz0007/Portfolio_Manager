@@ -301,11 +301,19 @@ class PriceObservationViewSet(viewsets.ModelViewSet):
             # 1. Publish observation atomically on market_data
             obs.publish(request.user)
 
-        # Valuation refresh is performed only by the durable publication outbox worker.
+        inst = obs.instrument or Instrument.objects.filter(pk=obs.instrument_id).first()
+        refresh_res = {}
+        if inst:
+            from apps.valuation.services.refresh_service import ValuationRefreshService
+            refresh_res = ValuationRefreshService.refresh_holdings_for_instrument(inst)
+
         return Response(
             {
                 'observation': PriceObservationSerializer(obs).data,
-                'valuation_refresh': {'status': 'QUEUED'},
+                'valuation_refresh': {
+                    'status': 'COMPLETED' if refresh_res else 'QUEUED',
+                    'refreshed_count': refresh_res.get('refreshed_count', refresh_res.get('refreshed', 0)),
+                },
             },
             status=status.HTTP_200_OK,
         )

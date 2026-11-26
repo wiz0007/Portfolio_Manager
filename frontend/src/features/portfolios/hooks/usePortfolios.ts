@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { portfoliosApi } from '../api/portfoliosApi';
+import { useInvalidateDashboard } from '@/features/dashboard/hooks/useDashboard';
 import {
   CreatePortfolioPayload,
   Portfolio,
@@ -26,18 +27,20 @@ export function usePortfolio(id: string) {
 
 export function useCreatePortfolio() {
   const queryClient = useQueryClient();
+  const invalidateDashboard = useInvalidateDashboard();
 
   return useMutation({
     mutationFn: (payload: CreatePortfolioPayload) => portfoliosApi.createPortfolio(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: PORTFOLIOS_QUERY_KEY });
-      queryClient.invalidateQueries({ queryKey: ['dashboardOverview'] });
+      invalidateDashboard();
     },
   });
 }
 
 export function useUpdatePortfolio() {
   const queryClient = useQueryClient();
+  const invalidateDashboard = useInvalidateDashboard();
 
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: UpdatePortfolioPayload }) =>
@@ -45,19 +48,20 @@ export function useUpdatePortfolio() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: PORTFOLIOS_QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: [...PORTFOLIOS_QUERY_KEY, variables.id] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardOverview'] });
+      invalidateDashboard();
     },
   });
 }
 
 export function useDeletePortfolio() {
   const queryClient = useQueryClient();
+  const invalidateDashboard = useInvalidateDashboard();
 
   return useMutation({
     mutationFn: (id: string) => portfoliosApi.deletePortfolio(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: PORTFOLIOS_QUERY_KEY });
-      queryClient.invalidateQueries({ queryKey: ['dashboardOverview'] });
+      invalidateDashboard();
     },
   });
 }

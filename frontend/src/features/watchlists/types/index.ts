@@ -5,7 +5,10 @@ export type PriceFreshnessStatus =
   | 'SYNTHETIC'
   | 'UNSUPPORTED'
   | 'AWAITING_VERIFICATION'
-  | 'CONFLICTED';
+  | 'UNVERIFIED'
+  | 'INCOMPATIBLE'
+  | 'CONFLICTED'
+  | 'MANUAL';
 
 export type MovementStatus =
   | 'CALCULATED'

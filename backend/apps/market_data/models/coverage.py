@@ -67,16 +67,16 @@ class InstrumentCoverage(models.Model):
     cadence = models.CharField(
         max_length=32,
         choices=CollectionCadence.choices,
-        default=CollectionCadence.EVERY_TRADING_DAY,
+        default=CollectionCadence.WEEKLY,
         db_index=True,
     )
     market_timezone = models.CharField(max_length=64, default='Asia/Kolkata')
     freshness_hours = models.PositiveIntegerField(
-        default=24,
-        help_text='Threshold after which observation is marked stale.',
+        default=168,
+        help_text='Threshold after which observation is marked stale (default: weekly 168 hours).',
     )
     grace_period_hours = models.PositiveIntegerField(
-        default=12,
+        default=48,
         help_text='Grace period for off-market days or holiday delays.',
     )
     preferred_source = models.CharField(max_length=64, default='MANUAL_VERIFIED')

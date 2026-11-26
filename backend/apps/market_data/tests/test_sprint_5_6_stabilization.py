@@ -16,7 +16,8 @@ from apps.dashboard.services.dashboard_service import DashboardService
 from apps.market_data.models.coverage import InstrumentCoverage
 from apps.market_data.models.import_batch import ImportBatchStatus, PriceImportBatch
 from apps.market_data.models.instrument import Instrument, InstrumentStatus
-from apps.market_data.models.observation import ObservationStatus, PriceObservation
+from apps.market_data.models.observation import ObservationStatus, PriceObservation, TrustClass
+from apps.market_data.models.series import MarketDataSeries
 from apps.market_data.services.history_service import MarketHistoryService
 from apps.market_data.services.import_service import PriceImportService, clean_cell
 from apps.market_data.services.price_resolver import PriceResolver, ResolutionStatus
@@ -156,7 +157,8 @@ class TestCanonicalPriceResolverContract:
             value=Decimal('1820.00'),  # Corrected price
             currency='INR',
             effective_at=t2,
-            source='MANUAL_CORRECTION',
+            series=original.series,
+            source='MANUAL_ENTRY',
             status=ObservationStatus.PUBLISHED,
             recorded_by=pub,
             published_by=pub,
@@ -172,7 +174,8 @@ class TestCanonicalPriceResolverContract:
             value=Decimal('1800.00'),
             currency='INR',
             effective_at=t1,
-            source='NSE_CLOSING',
+            series=original.series,
+            source='MANUAL_ENTRY',
             status=ObservationStatus.PUBLISHED,
             recorded_by=pub,
             published_by=pub,
@@ -182,7 +185,112 @@ class TestCanonicalPriceResolverContract:
         # Resolver should return the correction, never the superseded original
         resolved = PriceResolver.resolve_price(inst, as_of=t2 + timedelta(hours=1))
         assert resolved.price == Decimal('1820.00')
-        assert resolved.source == 'MANUAL_CORRECTION'
+        assert resolved.source == 'MANUAL_ENTRY'
+
+    def test_historical_as_of_does_not_see_later_published_correction(self, canonical_instruments, users):
+        inst = canonical_instruments['infy']
+        pub = users['publisher']
+        effective_at = datetime(2026, 11, 10, 10, 0, tzinfo=timezone.utc)
+        original_published_at = effective_at + timedelta(minutes=5)
+        correction_published_at = effective_at + timedelta(minutes=30)
+        historical_as_of = effective_at + timedelta(minutes=15)
+
+        original = PriceObservation.objects.create(
+            instrument=inst,
+            price_type='LTP',
+            value=Decimal('1800.00'),
+            currency='INR',
+            effective_at=effective_at,
+            source='NSE_CLOSING',
+            status=ObservationStatus.PUBLISHED,
+            recorded_by=pub,
+            published_by=pub,
+            published_at=original_published_at,
+        )
+        PriceObservation.objects.create(
+            instrument=inst,
+            price_type='LTP',
+            value=Decimal('1820.00'),
+            currency='INR',
+            effective_at=effective_at,
+            series=original.series,
+            source='NSE_CLOSING',
+            status=ObservationStatus.PUBLISHED,
+            recorded_by=pub,
+            published_by=pub,
+            published_at=correction_published_at,
+            correction_of=original,
+            correction_reason='Correction was approved later.',
+        )
+
+        single = PriceResolver.resolve_price(inst, as_of=historical_as_of)
+        bulk = PriceResolver.resolve_prices_bulk([inst], as_of=historical_as_of)[inst.id]
+
+        assert single.price == Decimal('1800.00')
+        assert single.source == 'NSE_CLOSING'
+        assert bulk.price == Decimal('1800.00')
+        assert bulk.source == 'NSE_CLOSING'
+
+    def test_historical_as_of_excludes_observations_not_yet_published(self, canonical_instruments, users):
+        inst = canonical_instruments['tcs']
+        pub = users['publisher']
+        effective_at = datetime(2026, 11, 10, 10, 0, tzinfo=timezone.utc)
+        published_at = effective_at + timedelta(minutes=30)
+
+        PriceObservation.objects.create(
+            instrument=inst,
+            price_type='LTP',
+            value=Decimal('3500.00'),
+            currency='INR',
+            effective_at=effective_at,
+            source='NSE_CLOSING',
+            status=ObservationStatus.PUBLISHED,
+            recorded_by=pub,
+            published_by=pub,
+            published_at=published_at,
+        )
+
+        before_publication = PriceResolver.resolve_price(
+            inst, as_of=effective_at + timedelta(minutes=10)
+        )
+        assert before_publication.status == ResolutionStatus.MISSING
+        assert before_publication.price is None
+
+    def test_explicit_series_selection_overrides_coverage_default_price_type(self, canonical_instruments, users):
+        inst = canonical_instruments['infy']
+        pub = users['publisher']
+        series = MarketDataSeries.objects.using('market_data').create(
+            instrument_id=inst.id,
+            exchange='NSE',
+            source='NSE_CLOSE_SERIES',
+            price_type='CLOSE',
+            currency='INR',
+            unit='UNITS',
+            pricing_methodology='TEST',
+            adjustment_methodology='RAW',
+        )
+        PriceObservation.objects.create(
+            instrument_id=inst.id,
+            series=series,
+            price_type='CLOSE',
+            value=Decimal('1801.00'),
+            currency='INR',
+            unit='UNITS',
+            effective_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+            source='NSE_CLOSE_SERIES',
+            status=ObservationStatus.PUBLISHED,
+            trust_class=TrustClass.VERIFIED_OFFICIAL,
+            recorded_by_id=pub.id,
+            published_by_id=pub.id,
+            published_at=datetime.now(timezone.utc),
+        )
+
+        resolved = PriceResolver.resolve_price(inst, series_id=str(series.id))
+
+        assert resolved.status == ResolutionStatus.AVAILABLE
+        assert resolved.price == Decimal('1801.00')
+        assert resolved.price_type == 'CLOSE'
+        assert resolved.series_id == str(series.id)
 
     def test_resolver_pending_review_returns_awaiting_verification(self, canonical_instruments, users):
         inst = canonical_instruments['tcs']

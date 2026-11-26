@@ -48,6 +48,8 @@ class DataCompletenessSerializer(serializers.Serializer):
     unvalued_holdings = serializers.IntegerField(read_only=True)
     stale_holdings = serializers.IntegerField(read_only=True)
     missing_price_holdings = serializers.IntegerField(read_only=True)
+    awaiting_verification_holdings = serializers.IntegerField(read_only=True, default=0)
+    unsupported_holdings = serializers.IntegerField(read_only=True, default=0)
     completeness_percentage = serializers.FloatField(read_only=True)
 
 
@@ -121,6 +123,9 @@ class HoldingOverviewItemSerializer(serializers.Serializer):
     valuation_status = serializers.CharField(read_only=True, default='VALUED')
     price_freshness = serializers.CharField(read_only=True)
     is_stale = serializers.BooleanField(read_only=True)
+    price_effective_at = serializers.CharField(read_only=True, allow_null=True, required=False)
+    price_published_at = serializers.CharField(read_only=True, allow_null=True, required=False)
+    price_age_seconds = serializers.IntegerField(read_only=True, allow_null=True, required=False)
 
 
 class HoldingsOverviewResponseSerializer(serializers.Serializer):

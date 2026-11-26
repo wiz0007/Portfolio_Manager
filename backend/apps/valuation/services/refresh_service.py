@@ -16,12 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 class ValuationRefreshService:
-    """
-    Orchestrates batch valuation recalculations across all user portfolios holding an instrument
-    upon publication of a new market price observation.
-    Guarantees failure isolation: an error on one holding does not rollback other holdings or the publication.
-    Integrates with durable MarketDataPublicationEvent outbox.
-    """
+    """Refresh instrument holdings from the durable market-data publication outbox."""
+
+    MAX_EVENTS_PER_INSTRUMENT_BATCH = 5000
 
     @classmethod
     def refresh_holdings_for_instrument(cls, instrument: Instrument, event_id: str = None) -> Dict[str, Any]:
@@ -29,13 +26,15 @@ class ValuationRefreshService:
         Finds all investments linked to the instrument, recalculates valuation using the authoritative
         asset valuation strategy, and records snapshots on Primary Database ('default').
         """
-        investments = list(Investment.objects.using('default').filter(instrument=instrument).select_related('portfolio', 'user'))
-        total = len(investments)
+        investments = Investment.objects.using('default').filter(
+            instrument=instrument
+        ).select_related('portfolio', 'user').order_by('id')
+        total = investments.count()
         refreshed = 0
         failed = 0
         errors: List[str] = []
 
-        for inv in investments:
+        for inv in investments.iterator(chunk_size=100):
             try:
                 snapshot = ValuationOrchestrator.calculate_and_record(
                     inv, user=inv.user, idempotency_key=event_id
@@ -73,54 +72,94 @@ class ValuationRefreshService:
 
     @classmethod
     def process_pending_publication_events(cls, limit: int = 50) -> Dict[str, int]:
-        """Process publication events with retry-safe, per-event idempotency.
+        """Process publication events in bounded per-instrument batches.
 
-        A partially failed holding refresh is NOT acknowledged. Successful holding
-        snapshots carry the event UUID as an idempotency key, so retrying the event
-        does not create duplicate snapshots for already-refreshed holdings.
+        Historical backfills can publish thousands of observations for one
+        instrument. Recalculating every holding once per observation is both
+        wasteful and operationally dangerous. This worker coalesces the events
+        selected for one instrument into one current-valuation refresh.
+
+        The oldest selected event is the stable idempotency key for the batch.
+        Events are acknowledged together only after every affected holding has
+        refreshed successfully. If the primary-database writes succeed but the
+        secondary-database acknowledgement fails, replaying the same oldest event
+        key makes already-created valuation snapshots idempotent.
         """
         from django.db import transaction
 
-        event_ids = list(
+        if limit < 1:
+            raise ValueError('limit must be a positive integer')
+
+        candidate_events = list(
             MarketDataPublicationEvent.objects.using('market_data')
             .filter(status__in=[PublicationEventStatus.PENDING, PublicationEventStatus.FAILED])
-            .order_by('created_at').values_list('id', flat=True)[:limit]
+            .order_by('created_at', 'id')
+            .values_list('id', 'instrument_id')[:limit]
         )
+        candidate_instrument_ids = list(dict.fromkeys(
+            instrument_id for _event_id, instrument_id in candidate_events
+        ))
+
         processed = failed = 0
-        for event_id in event_ids:
+        for instrument_id in candidate_instrument_ids:
+            event_ids = []
             try:
                 with transaction.atomic(using='market_data'):
-                    event = (
+                    events = list(
                         MarketDataPublicationEvent.objects.using('market_data')
-                        .select_for_update().get(pk=event_id)
+                        .select_for_update()
+                        .filter(
+                            instrument_id=instrument_id,
+                            status__in=[PublicationEventStatus.PENDING, PublicationEventStatus.FAILED],
+                        )
+                        .order_by('created_at', 'id')[:cls.MAX_EVENTS_PER_INSTRUMENT_BATCH]
                     )
-                    if event.status == PublicationEventStatus.PROCESSED:
+                    if not events:
                         continue
-                    event.attempts += 1
-                    instrument = Instrument.objects.using('default').filter(id=event.instrument_id).first()
+
+                    event_ids = [event.id for event in events]
+                    # The oldest event remains pending until the whole batch is
+                    # acknowledged, so it remains stable across failed retries.
+                    batch_idempotency_key = str(events[0].id)
+                    instrument = Instrument.objects.using('default').filter(id=instrument_id).first()
                     if instrument is None:
                         raise RuntimeError(
-                            f'Canonical instrument {event.instrument_id} is missing; publication event cannot be applied.'
+                            f'Canonical instrument {instrument_id} is missing; publication events cannot be applied.'
                         )
-                    stats = cls.refresh_holdings_for_instrument(instrument, event_id=str(event.id))
+
+                    stats = cls.refresh_holdings_for_instrument(
+                        instrument, event_id=batch_idempotency_key
+                    )
                     if stats['failed_count']:
                         raise RuntimeError(
                             f"{stats['failed_count']} of {stats['total_holdings']} holding refreshes failed: "
                             + '; '.join(stats.get('errors', [])[:5])
                         )
-                    event.status = PublicationEventStatus.PROCESSED
-                    event.processed_at = timezone.now()
-                    event.last_error = ''
-                    event.save(using='market_data', update_fields=[
-                        'status', 'processed_at', 'last_error', 'attempts'
-                    ])
-                processed += 1
+
+                    MarketDataPublicationEvent.objects.using('market_data').filter(
+                        id__in=event_ids,
+                        status__in=[PublicationEventStatus.PENDING, PublicationEventStatus.FAILED],
+                    ).update(
+                        status=PublicationEventStatus.PROCESSED,
+                        processed_at=timezone.now(),
+                        last_error='',
+                        attempts=models.F('attempts') + 1,
+                    )
+                processed += len(event_ids)
             except Exception as exc:
-                MarketDataPublicationEvent.objects.using('market_data').filter(pk=event_id).update(
-                    status=PublicationEventStatus.FAILED,
-                    attempts=models.F('attempts') + 1,
-                    last_error=str(exc)[:4000],
+                if event_ids:
+                    MarketDataPublicationEvent.objects.using('market_data').filter(
+                        id__in=event_ids,
+                        status__in=[PublicationEventStatus.PENDING, PublicationEventStatus.FAILED],
+                    ).update(
+                        status=PublicationEventStatus.FAILED,
+                        attempts=models.F('attempts') + 1,
+                        last_error=str(exc)[:4000],
+                    )
+                logger.exception(
+                    'Publication event batch for instrument %s failed and will be retried',
+                    instrument_id,
                 )
-                logger.exception('Publication event %s failed and will be retried', event_id)
-                failed += 1
+                failed += len(event_ids) if event_ids else 1
+
         return {'processed': processed, 'failed': failed}

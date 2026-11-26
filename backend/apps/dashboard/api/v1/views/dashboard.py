@@ -1,7 +1,6 @@
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import status
-from core.permissions import IsAuthenticatedAndEmailVerified as IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -14,6 +13,7 @@ from apps.dashboard.api.v1.serializers.dashboard import (
 )
 from apps.dashboard.services.dashboard_service import DashboardService
 from apps.watchlists.api.v1.serializers import WatchlistItemResponseSerializer
+from core.permissions import IsAuthenticatedAndEmailVerified as IsAuthenticated
 
 
 class DashboardOverviewView(APIView):

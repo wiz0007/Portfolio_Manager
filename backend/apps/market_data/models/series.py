@@ -115,6 +115,13 @@ class MarketDataSeries(models.Model):
                     )
                 if self.data_version < previous['data_version']:
                     raise ValidationError('Series data_version cannot decrease.')
+                if (
+                    self.data_version != previous['data_version']
+                    and not getattr(self, '_publication_managed', False)
+                ):
+                    raise ValidationError(
+                        'Series data_version can only change inside the publication lifecycle.'
+                    )
         self.full_clean(validate_unique=False, validate_constraints=False)
         kwargs['using'] = using
         return super().save(*args, **kwargs)

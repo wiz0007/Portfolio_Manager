@@ -145,6 +145,21 @@ class Instrument(models.Model):
                 # Event insertion failure rolls back the canonical instrument write.
                 InstrumentIdentitySyncService.record_sync_event(self)
 
+    def to_sync_payload(self) -> dict:
+        return {
+            'symbol': self.symbol,
+            'name': self.name,
+            'asset_class': self.asset_class,
+            'product_type': self.product_type or '',
+            'exchange': self.exchange or '',
+            'currency': self.currency or 'INR',
+            'isin': self.isin,
+            'scheme_code': self.scheme_code,
+            'security_code': self.security_code,
+            'is_active': self.is_active,
+            'identity_version': self.identity_version or 1,
+        }
+
     def __str__(self) -> str:
         exchange_str = f" ({self.exchange})" if self.exchange else ""
         return f"{self.symbol}{exchange_str} - {self.name}"

@@ -144,7 +144,7 @@ class PriceObservation(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=['instrument_id', 'series', 'effective_at', 'price_type', 'source'],
-                condition=models.Q(status=ObservationStatus.PUBLISHED),
+                condition=models.Q(status=ObservationStatus.PUBLISHED, correction_of__isnull=True),
                 name='uniq_published_obs_series',
             )
         ]
@@ -300,9 +300,23 @@ class PriceObservation(models.Model):
                 defaults={'description': f'Auto-created exact series for {instrument.symbol}'},
             )
             self.series = series
+            if 'update_fields' in kwargs and kwargs['update_fields'] is not None:
+                fields_set = set(kwargs['update_fields'])
+                fields_set.add('series')
+                fields_set.add('series_id')
+                kwargs['update_fields'] = list(fields_set)
 
-        if self.status == ObservationStatus.PUBLISHED and not self.published_at:
-            self.published_at = timezone.now()
+        if self.status == ObservationStatus.PUBLISHED:
+            if not self.published_at:
+                self.published_at = timezone.now()
+            if self.trust_class == TrustClass.UNVERIFIED:
+                src = (self.source or '').upper()
+                if any(k in src for k in ('OFFICIAL', 'NSE_OFFICIAL', 'BSE_OFFICIAL', 'AMFI', 'IBJA')):
+                    self.trust_class = TrustClass.VERIFIED_OFFICIAL
+                elif any(k in src for k in ('YAHOO', 'MFAPI', 'FEED', 'SECONDARY')):
+                    self.trust_class = TrustClass.VERIFIED_PERMITTED_SECONDARY
+                elif any(k in src for k in ('MANUAL', 'CSV')):
+                    self.trust_class = TrustClass.MANUAL_VERIFIED
         self.full_clean(exclude=None, validate_unique=False, validate_constraints=False)
 
         was_published = bool(previous and previous.get('status') == ObservationStatus.PUBLISHED)
@@ -319,7 +333,11 @@ class PriceObservation(models.Model):
                 series = MarketDataSeries.objects.using(using).select_for_update().get(pk=self.series_id)
                 series.data_version += 1
                 series.last_published_at = self.published_at
-                series.save(using=using, update_fields=['data_version', 'last_published_at', 'updated_at'])
+                series._publication_managed = True
+                try:
+                    series.save(using=using, update_fields=['data_version', 'last_published_at', 'updated_at'])
+                finally:
+                    series._publication_managed = False
                 from apps.market_data.models.publication_event import MarketDataPublicationEvent
                 MarketDataPublicationEvent.objects.using(using).create(
                     observation_id=self.id, instrument_id=self.instrument_id,
@@ -346,82 +364,118 @@ class PriceObservation(models.Model):
         self.save(update_fields=['status', 'updated_at'])
 
     def publish(self, publisher) -> None:
+        """Atomically publish a reviewed observation and emit its durable outbox event.
+
+        Both the observation and its exact series are locked before changing state.
+        This prevents two concurrent publishers from publishing the same record or
+        losing a monotonic series-version increment.
         """
-        Transition observation to published. Once published, record is immutable.
-        Atomic on secondary database ('market_data'). Emits durable publication outbox event.
-        """
-        if self.status == ObservationStatus.PUBLISHED:
-            return
-        if self.status != ObservationStatus.PENDING_REVIEW:
-            raise ValidationError(
-                f"Cannot publish observation in status '{self.status}'. Must be in PENDING_REVIEW."
-            )
+        from django.db import transaction
+        from apps.market_data.models.publication_event import MarketDataPublicationEvent
+        from apps.market_data.models.series import MarketDataSeries
+
         if not publisher:
             raise ValidationError('A publisher must be specified to publish an observation.')
+        active = getattr(publisher, 'is_active', True)
         authorized = bool(
-            getattr(publisher, 'is_superuser', False)
-            or getattr(publisher, 'is_staff', False)
-            or publisher.groups.filter(name='MarketDataPublisher').exists()
+            active and (
+                getattr(publisher, 'is_superuser', False)
+                or getattr(publisher, 'is_staff', False)
+                or publisher.groups.filter(name='MarketDataPublisher').exists()
+            )
         )
         if not authorized:
-            raise ValidationError('Only an authorized MarketDataPublisher or staff user can publish observations.')
-        # Only a publisher's explicit approval can elevate a manual draft. The API
-        # does not accept client-supplied trust_class values.
-        if self.trust_class == TrustClass.UNVERIFIED and self.source in ('MANUAL_VERIFIED', 'CSV_IMPORT'):
-            self.trust_class = TrustClass.MANUAL_VERIFIED
-        elif self.trust_class == TrustClass.UNVERIFIED and self.source in ('YAHOO_FINANCE_FEED', 'MFAPI_AGGREGATOR'):
-            self.trust_class = TrustClass.VERIFIED_PERMITTED_SECONDARY
+            raise ValidationError('An active MarketDataPublisher, staff user or superuser is required.')
 
-        from django.db import transaction
-
-        from apps.market_data.models.publication_event import MarketDataPublicationEvent
-
-        with transaction.atomic(using='market_data'):
-            self.status = ObservationStatus.PUBLISHED
-            self.published_by = publisher
-            self.published_at = timezone.now()
-
-            # Increment series monotonic data version
-            if self.series:
-                self.series.data_version = (self.series.data_version or 0) + 1
-                self.series.last_published_at = self.published_at
-                self.series.save(using='market_data', update_fields=['data_version', 'last_published_at', 'updated_at'])
-
-            self._publication_managed = True
+        using = 'market_data'
+        with transaction.atomic(using=using):
             try:
-                self.save(using='market_data')
-            finally:
-                self._publication_managed = False
+                locked_observation = type(self).objects.using(using).select_for_update().get(pk=self.pk)
+            except type(self).DoesNotExist:
+                raise ValidationError('Observation no longer exists.')
 
-            # Create durable publication event in secondary outbox
-            MarketDataPublicationEvent.objects.using('market_data').create(
-                observation_id=self.id,
-                instrument_id=self.instrument_id,
-                series_id=self.series_id,
-                effective_at=self.effective_at,
-                price_type=self.price_type,
-                value=self.value,
-                currency=self.currency,
-                data_version=self.series.data_version if self.series else 1,
+            if locked_observation.status == ObservationStatus.PUBLISHED:
+                self.status = locked_observation.status
+                self.published_at = locked_observation.published_at
+                self.published_by_id = locked_observation.published_by_id
+                self.trust_class = locked_observation.trust_class
+                return
+            if locked_observation.status != ObservationStatus.PENDING_REVIEW:
+                raise ValidationError(
+                    f"Cannot publish observation in status '{locked_observation.status}'. Must be in PENDING_REVIEW."
+                )
+            if not locked_observation.series_id:
+                raise ValidationError('An exact market-data series is required before publication.')
+
+            series = MarketDataSeries.objects.using(using).select_for_update().get(
+                pk=locked_observation.series_id
+            )
+            if locked_observation.trust_class == TrustClass.UNVERIFIED:
+                src = (locked_observation.source or '').upper()
+                if any(k in src for k in ('OFFICIAL', 'NSE_OFFICIAL', 'BSE_OFFICIAL', 'AMFI', 'IBJA')):
+                    locked_observation.trust_class = TrustClass.VERIFIED_OFFICIAL
+                elif any(k in src for k in ('YAHOO', 'MFAPI', 'FEED', 'SECONDARY')):
+                    locked_observation.trust_class = TrustClass.VERIFIED_PERMITTED_SECONDARY
+                elif any(k in src for k in ('MANUAL', 'CSV')):
+                    locked_observation.trust_class = TrustClass.MANUAL_VERIFIED
+
+            published_at = timezone.now()
+            locked_observation.status = ObservationStatus.PUBLISHED
+            locked_observation.published_by_id = getattr(publisher, 'id', publisher)
+            locked_observation.published_at = published_at
+
+            series.data_version = (series.data_version or 0) + 1
+            series.last_published_at = published_at
+            series._publication_managed = True
+            try:
+                series.save(
+                    using=using,
+                    update_fields=['data_version', 'last_published_at', 'updated_at'],
+                )
+            finally:
+                series._publication_managed = False
+
+            locked_observation._publication_managed = True
+            try:
+                locked_observation.save(using=using)
+            finally:
+                locked_observation._publication_managed = False
+
+            MarketDataPublicationEvent.objects.using(using).create(
+                observation_id=locked_observation.id,
+                instrument_id=locked_observation.instrument_id,
+                series_id=locked_observation.series_id,
+                effective_at=locked_observation.effective_at,
+                price_type=locked_observation.price_type,
+                value=locked_observation.value,
+                currency=locked_observation.currency,
+                data_version=series.data_version,
             )
 
-            # Update coverage last_published_at
-            if self.instrument and self.instrument.coverage:
-                cov = self.instrument.coverage
-                cov.last_published_at = self.published_at
-                cov.save(using='market_data', update_fields=['last_published_at', 'updated_at'])
+            from apps.market_data.models.coverage import InstrumentCoverage
+            InstrumentCoverage.objects.using(using).filter(
+                instrument_id=locked_observation.instrument_id
+            ).update(last_published_at=published_at)
 
-            # Mark any corresponding worklist item as COMPLETED
             from apps.market_data.models.worklist import MarketDataWorklistItem, WorklistItemStatus
-            eff_date = self.effective_at.astimezone(ZoneInfo('Asia/Kolkata')).date() if hasattr(self.effective_at, 'astimezone') else self.effective_at
-            MarketDataWorklistItem.objects.using('market_data').filter(
-                instrument_id=self.instrument_id,
+            eff_date = locked_observation.effective_at.astimezone(
+                ZoneInfo('Asia/Kolkata')
+            ).date()
+            MarketDataWorklistItem.objects.using(using).filter(
+                instrument_id=locked_observation.instrument_id,
                 effective_date=eff_date,
             ).update(
                 status=WorklistItemStatus.COMPLETED,
-                last_published_price=self.value,
-                last_published_date=self.published_at,
+                last_published_price=locked_observation.value,
+                last_published_date=published_at,
             )
+
+            # Keep the caller's in-memory object aligned with the committed row.
+            self.status = locked_observation.status
+            self.published_by_id = locked_observation.published_by_id
+            self.published_at = locked_observation.published_at
+            self.trust_class = locked_observation.trust_class
+            self.series = series
 
     def reject(self, reviewer, reason: str) -> None:
         if self.status == ObservationStatus.PUBLISHED:

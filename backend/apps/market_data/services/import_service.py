@@ -170,7 +170,23 @@ class PriceImportService:
                             series_cache[series_cache_key] = 'AMBIGUOUS'
                         else:
                             all_matches = list(series_qs.order_by('id')[:2])
-                            series_cache[series_cache_key] = all_matches[0] if len(all_matches) == 1 else ('AMBIGUOUS' if len(all_matches) > 1 else None)
+                            if len(all_matches) == 1:
+                                series_cache[series_cache_key] = all_matches[0]
+                            elif len(all_matches) > 1:
+                                series_cache[series_cache_key] = 'AMBIGUOUS'
+                            elif not series_raw:
+                                auto_s, _ = MarketDataSeries.objects.using('market_data').get_or_create(
+                                    instrument_id=instrument.id,
+                                    exchange=instrument.exchange or '',
+                                    source=source_name,
+                                    price_type=price_type,
+                                    currency=currency,
+                                    unit=unit,
+                                    defaults={'is_active': True, 'description': f'Auto-created series for {instrument.symbol}'}
+                                )
+                                series_cache[series_cache_key] = auto_s
+                            else:
+                                series_cache[series_cache_key] = None
                 series = series_cache[series_cache_key]
                 if series == 'AMBIGUOUS':
                     row_errors.append({'field': 'series_id', 'error': 'Multiple series match. Supply an exact series_id.'})
