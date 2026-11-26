@@ -1,4 +1,5 @@
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -8,7 +9,8 @@ from django.utils import timezone as dj_timezone
 
 from apps.market_data.models.coverage import InstrumentCoverage
 from apps.market_data.models.instrument import Instrument
-from apps.market_data.models.observation import ObservationStatus, PriceObservation
+from apps.market_data.models.observation import ObservationStatus, PriceObservation, TrustClass
+from apps.market_data.models.series import MarketDataSeries
 
 
 class ResolutionStatus:
@@ -17,6 +19,8 @@ class ResolutionStatus:
     MISSING = 'MISSING'
     SYNTHETIC = 'SYNTHETIC'
     AWAITING_VERIFICATION = 'AWAITING_VERIFICATION'
+    UNVERIFIED = 'UNVERIFIED'
+    INCOMPATIBLE = 'INCOMPATIBLE'
     UNSUPPORTED = 'UNSUPPORTED'
 
 
@@ -34,255 +38,201 @@ class ResolvedPrice:
     is_synthetic: bool = False
     notes: str = ''
     age_seconds: Optional[int] = None
+    series_id: Optional[str] = None
+    observation_id: Optional[str] = None
+    data_version: Optional[int] = None
 
 
 class PriceResolver:
-    """
-    Central authoritative resolver for market prices across all asset classes.
-    Prioritizes verified published PriceObservations over fallback demo data.
-    Enforces historical as_of bounds, freshness policies, currency/unit consistency,
-    and excludes superseded observations.
-    """
+    """Canonical exact-series resolver; bulk and single paths share identical policy."""
+
+    TRUSTED_CLASSES = {
+        TrustClass.VERIFIED_OFFICIAL,
+        TrustClass.VERIFIED_PERMITTED_SECONDARY,
+        TrustClass.MANUAL_VERIFIED,
+        TrustClass.CORRECTED,
+    }
 
     @classmethod
-    def resolve_price(
-        cls,
-        instrument: Instrument,
-        as_of: Optional[datetime] = None,
-        price_type: Optional[str] = None,
-    ) -> ResolvedPrice:
-        obs_dt = as_of or dj_timezone.now()
-        cov = getattr(instrument, 'coverage', None)
-        target_price_type = price_type or (cov.price_type if cov else None)
+    def _resolve_selected(cls, instrument, coverage, series, observation, pending, now, as_of):
+        target_type = series.price_type if series else (coverage.price_type if coverage else None)
+        expected_currency = series.currency if series else (coverage.currency if coverage else instrument.currency)
+        expected_unit = series.unit if series else (coverage.unit if coverage else 'UNITS')
+        if series is None:
+            return ResolvedPrice(None, ResolutionStatus.MISSING, 'NONE', instrument.symbol, None,
+                                 expected_currency, expected_unit, price_type=target_type,
+                                 notes='No active exact price series is configured.')
+        if observation is None:
+            return ResolvedPrice(None,
+                ResolutionStatus.AWAITING_VERIFICATION if pending else ResolutionStatus.MISSING,
+                'MANUAL_OPERATOR' if pending else 'NONE', instrument.symbol, None,
+                series.currency, series.unit, price_type=series.price_type, series_id=str(series.id),
+                data_version=series.data_version,
+                notes='An observation is awaiting verification.' if pending else 'No published observation exists in this series.')
 
-        # 1. Check for verified published PriceObservation (excluding superseded ones)
-        obs_qs = PriceObservation.objects.filter(
-            instrument=instrument,
-            status=ObservationStatus.PUBLISHED,
-            effective_at__lte=obs_dt,
-        ).exclude(corrections__status=ObservationStatus.PUBLISHED)
+        if observation.currency != series.currency or observation.unit != series.unit:
+            return ResolvedPrice(None, ResolutionStatus.INCOMPATIBLE, observation.source, instrument.symbol, None,
+                                 series.currency, series.unit, price_type=series.price_type,
+                                 series_id=str(series.id), observation_id=str(observation.id),
+                                 data_version=series.data_version,
+                                 notes='Observation currency or quotation unit conflicts with its series definition.')
+        if coverage and coverage.currency and observation.currency != coverage.currency:
+            return ResolvedPrice(None, ResolutionStatus.INCOMPATIBLE, observation.source, instrument.symbol, None,
+                                 coverage.currency, coverage.unit, price_type=series.price_type,
+                                 series_id=str(series.id), observation_id=str(observation.id),
+                                 data_version=series.data_version,
+                                 notes='Observation currency conflicts with coverage policy.')
+        if observation.is_synthetic or observation.trust_class == TrustClass.SYNTHETIC:
+            return ResolvedPrice(None, ResolutionStatus.SYNTHETIC, observation.source,
+                                 observation.source_reference or instrument.symbol, observation.effective_at,
+                                 observation.currency, observation.unit, observation.published_at,
+                                 observation.price_type, True,
+                                 'Synthetic observations are excluded from portfolio valuation.',
+                                 series_id=str(series.id), observation_id=str(observation.id),
+                                 data_version=series.data_version)
+        if observation.trust_class not in cls.TRUSTED_CLASSES:
+            return ResolvedPrice(None, ResolutionStatus.UNVERIFIED, observation.source,
+                                 observation.source_reference or instrument.symbol, observation.effective_at,
+                                 observation.currency, observation.unit, observation.published_at,
+                                 observation.price_type, False,
+                                 'Unverified observations are excluded from portfolio valuation.',
+                                 series_id=str(series.id), observation_id=str(observation.id),
+                                 data_version=series.data_version)
 
-        if target_price_type:
-            obs_qs = obs_qs.filter(price_type=target_price_type)
+        reference_dt = as_of or now
+        age_seconds = max(0, int((reference_dt - observation.effective_at).total_seconds()))
+        stale = bool(coverage and coverage.freshness_hours and
+                     (reference_dt - observation.effective_at).total_seconds() > coverage.freshness_hours * 3600)
+        return ResolvedPrice(observation.value, ResolutionStatus.STALE if stale else ResolutionStatus.AVAILABLE,
+                             observation.source, observation.source_reference or instrument.symbol,
+                             observation.effective_at, observation.currency, observation.unit,
+                             observation.published_at, observation.price_type, False,
+                             'Observation exceeds configured freshness threshold.' if stale else observation.notes,
+                             age_seconds, str(series.id), str(observation.id), series.data_version)
 
-        latest_obs = obs_qs.order_by('-effective_at', '-published_at', '-created_at').first()
-
-        if latest_obs:
-            # Currency & unit integrity check against coverage policy
-            if cov:
-                if cov.currency and latest_obs.currency != cov.currency:
-                    return ResolvedPrice(
-                        price=None,
-                        status=ResolutionStatus.UNSUPPORTED,
-                        source=latest_obs.source,
-                        source_reference=instrument.symbol,
-                        effective_at=None,
-                        published_at=None,
-                        price_type=latest_obs.price_type,
-                        currency=instrument.currency,
-                        unit=cov.unit if cov else latest_obs.unit,
-                        notes=f"Currency mismatch: observation in {latest_obs.currency}, coverage requires {cov.currency}.",
-                    )
-
-            # Check freshness against instrument coverage policy
-            is_stale = False
-            notes = latest_obs.notes or ''
-            age_sec = None
-
-            if latest_obs.published_at:
-                age_sec = max(0, int((dj_timezone.now() - latest_obs.published_at).total_seconds()))
-
-            if cov and cov.freshness_hours:
-                # If requested as_of is current time, check staleness against now
-                if not as_of or (dj_timezone.now() - obs_dt).total_seconds() < 300:
-                    age_hours = (dj_timezone.now() - latest_obs.effective_at).total_seconds() / 3600.0
-                    if age_hours > cov.freshness_hours:
-                        is_stale = True
-                        notes = f"Observation is {int(age_hours)} hours old (threshold: {cov.freshness_hours}h)."
-
-            status = ResolutionStatus.STALE if is_stale else ResolutionStatus.AVAILABLE
-            return ResolvedPrice(
-                price=latest_obs.value,
-                status=status,
-                source=latest_obs.source,
-                source_reference=latest_obs.source_reference or instrument.symbol,
-                effective_at=latest_obs.effective_at,
-                published_at=latest_obs.published_at,
-                price_type=latest_obs.price_type,
-                currency=latest_obs.currency,
-                unit=latest_obs.unit,
-                is_synthetic=latest_obs.is_synthetic,
-                notes=notes,
-                age_seconds=age_sec,
-            )
-
-        # 2. Check if a relevant observation is in PENDING_REVIEW (awaiting verification)
-        has_pending = PriceObservation.objects.filter(
-            instrument=instrument,
-            status=ObservationStatus.PENDING_REVIEW,
-            effective_at__lte=obs_dt,
-        ).exists()
-
-        if has_pending:
-            return ResolvedPrice(
-                price=None,
-                status=ResolutionStatus.AWAITING_VERIFICATION,
-                source='MANUAL_OPERATOR',
-                source_reference=instrument.symbol,
-                effective_at=None,
-                published_at=None,
-                price_type=target_price_type,
-                currency=instrument.currency,
-                unit=cov.unit if cov else 'UNITS',
-                is_synthetic=False,
-                notes='Price observation has been drafted and is awaiting verification by publisher.',
-            )
-
-        # 3. Price unavailable: missing prices must have price=None, effective_at=None, published_at=None
-        return ResolvedPrice(
-            price=None,
-            status=ResolutionStatus.MISSING,
-            source='NONE',
-            source_reference=instrument.symbol,
-            effective_at=None,
-            published_at=None,
-            price_type=target_price_type,
-            currency=instrument.currency,
-            unit=cov.unit if cov else 'UNITS',
-            is_synthetic=False,
-            notes=f"No published price observation available on or before {obs_dt.isoformat()}.",
+    @classmethod
+    def resolve_price(cls, instrument: Instrument, as_of=None, price_type=None, series_id=None) -> ResolvedPrice:
+        now = dj_timezone.now()
+        obs_dt = as_of or now
+        coverage = InstrumentCoverage.objects.using('market_data').filter(instrument_id=instrument.id).first()
+        # An explicit series selection is authoritative. Coverage.price_type is
+        # only the default when the caller has not selected a concrete series.
+        target_type = price_type or (coverage.price_type if coverage and not series_id else None)
+        series_qs = MarketDataSeries.objects.using('market_data').filter(
+            instrument_id=instrument.id, is_active=True
         )
-
-    @classmethod
-    def resolve_prices_bulk(
-        cls,
-        instruments: Sequence[Instrument],
-        as_of: Optional[datetime] = None,
-    ) -> Dict[uuid.UUID, ResolvedPrice]:
-        """
-        High-performance bulk price resolver for batches of instruments.
-        Eliminates N+1 queries in dashboard and watchlist operations.
-        """
-        if not instruments:
-            return {}
-
-        obs_dt = as_of or dj_timezone.now()
-        unique_insts = {inst.id: inst for inst in instruments}
-        inst_ids = list(unique_insts.keys())
-
-        # 1. Batch query latest published observations (excluding superseded)
-        published_qs = (
-            PriceObservation.objects.filter(
-                instrument_id__in=inst_ids,
+        if target_type:
+            series_qs = series_qs.filter(price_type=target_type)
+        if series_id:
+            try:
+                series_qs = series_qs.filter(pk=uuid.UUID(str(series_id)))
+            except (ValueError, TypeError, AttributeError):
+                return ResolvedPrice(None, ResolutionStatus.UNSUPPORTED, 'NONE', instrument.symbol, None,
+                                     instrument.currency, coverage.unit if coverage else 'UNITS',
+                                     price_type=target_type, notes='series_id must be a valid UUID.')
+        series_rows = list(series_qs.order_by('id')[:2])
+        if len(series_rows) > 1 and not series_id and coverage and coverage.preferred_source:
+            preferred_rows = list(series_qs.filter(source=coverage.preferred_source).order_by('id')[:2])
+            if len(preferred_rows) == 1:
+                series_rows = preferred_rows
+        if len(series_rows) > 1:
+            return ResolvedPrice(None, ResolutionStatus.UNSUPPORTED, 'NONE', instrument.symbol, None,
+                                 instrument.currency, coverage.unit if coverage else 'UNITS',
+                                 price_type=target_type, notes='Multiple active series match. An exact series_id is required.')
+        series = series_rows[0] if series_rows else None
+        observation = None
+        pending = False
+        if series:
+            observation = (PriceObservation.objects.using('market_data').filter(
+                instrument_id=instrument.id,
+                series_id=series.id,
+                price_type=series.price_type,
                 status=ObservationStatus.PUBLISHED,
                 effective_at__lte=obs_dt,
-            )
-            .exclude(corrections__status=ObservationStatus.PUBLISHED)
-            .order_by('instrument_id', '-effective_at', '-published_at', '-created_at')
-        )
+                # Historical resolution must not expose observations that were
+                # published after the requested as-of instant. This also prevents
+                # later corrections from rewriting what the system knew earlier.
+                published_at__isnull=False,
+                published_at__lte=obs_dt,
+            ).exclude(
+                corrections__status=ObservationStatus.PUBLISHED,
+                corrections__published_at__isnull=False,
+                corrections__published_at__lte=obs_dt,
+                corrections__effective_at__lte=obs_dt,
+            ).order_by('-effective_at', '-published_at', '-created_at').first())
+            if observation is None:
+                pending = PriceObservation.objects.using('market_data').filter(
+                    instrument_id=instrument.id, series_id=series.id,
+                    status=ObservationStatus.PENDING_REVIEW, effective_at__lte=obs_dt,
+                ).exists()
+        return cls._resolve_selected(instrument, coverage, series, observation, pending, now, obs_dt)
 
-        # Batch load coverages for requested instruments
-        coverages = {
-            cov.instrument_id: cov
-            for cov in InstrumentCoverage.objects.filter(instrument_id__in=inst_ids)
-        }
-
-        latest_by_inst: Dict[uuid.UUID, PriceObservation] = {}
-        for obs in published_qs:
-            if obs.instrument_id not in latest_by_inst:
-                latest_by_inst[obs.instrument_id] = obs
-
-        # 2. Check pending review observations in bulk for remaining instruments
-        missing_ids = [iid for iid in inst_ids if iid not in latest_by_inst]
-        pending_set = set(
-            PriceObservation.objects.filter(
-                instrument_id__in=missing_ids,
-                status=ObservationStatus.PENDING_REVIEW,
-                effective_at__lte=obs_dt,
-            ).values_list('instrument_id', flat=True)
-        )
-
-        results: Dict[uuid.UUID, ResolvedPrice] = {}
+    @classmethod
+    def resolve_prices_bulk(cls, instruments: Sequence[Instrument], as_of=None) -> Dict[uuid.UUID, ResolvedPrice]:
+        if not instruments:
+            return {}
         now = dj_timezone.now()
+        obs_dt = as_of or now
+        unique = {inst.id: inst for inst in instruments}
+        ids = list(unique)
+        coverages = {
+            row.instrument_id: row for row in InstrumentCoverage.objects.using('market_data').filter(instrument_id__in=ids)
+        }
+        series_by_instrument = defaultdict(list)
+        for series in MarketDataSeries.objects.using('market_data').filter(instrument_id__in=ids, is_active=True).order_by('id'):
+            coverage = coverages.get(series.instrument_id)
+            if coverage and series.price_type != coverage.price_type:
+                continue
+            series_by_instrument[series.instrument_id].append(series)
 
-        for inst_id, inst in unique_insts.items():
-            cov = coverages.get(inst_id) or getattr(inst, 'coverage', None)
+        selected = {}
+        for inst_id, rows in series_by_instrument.items():
+            coverage = coverages.get(inst_id)
+            if len(rows) > 1 and coverage and coverage.preferred_source:
+                preferred_rows = [row for row in rows if row.source == coverage.preferred_source]
+                if len(preferred_rows) == 1:
+                    rows = preferred_rows
+                    series_by_instrument[inst_id] = rows
+            if len(rows) == 1:
+                selected[inst_id] = rows[0]
 
-            if inst_id in latest_by_inst:
-                latest_obs = latest_by_inst[inst_id]
+        series_ids = [row.id for row in selected.values()]
+        latest_by_series = {}
+        if series_ids:
+            observations = (PriceObservation.objects.using('market_data').filter(
+                series_id__in=series_ids,
+                status=ObservationStatus.PUBLISHED,
+                effective_at__lte=obs_dt,
+                published_at__isnull=False,
+                published_at__lte=obs_dt,
+            ).exclude(
+                corrections__status=ObservationStatus.PUBLISHED,
+                corrections__published_at__isnull=False,
+                corrections__published_at__lte=obs_dt,
+                corrections__effective_at__lte=obs_dt,
+            ).order_by('series_id', '-effective_at', '-published_at', '-created_at'))
+            for obs in observations:
+                latest_by_series.setdefault(obs.series_id, obs)
+        missing_series_ids = [sid for sid in series_ids if sid not in latest_by_series]
+        pending_series = set(PriceObservation.objects.using('market_data').filter(
+            series_id__in=missing_series_ids, status=ObservationStatus.PENDING_REVIEW,
+            effective_at__lte=obs_dt,
+        ).values_list('series_id', flat=True)) if missing_series_ids else set()
 
-                # Currency validation
-                if cov and cov.currency and latest_obs.currency != cov.currency:
-                    results[inst_id] = ResolvedPrice(
-                        price=None,
-                        status=ResolutionStatus.UNSUPPORTED,
-                        source=latest_obs.source,
-                        source_reference=inst.symbol,
-                        effective_at=None,
-                        published_at=None,
-                        price_type=latest_obs.price_type,
-                        currency=inst.currency,
-                        unit=cov.unit if cov else latest_obs.unit,
-                        notes=f"Currency mismatch: {latest_obs.currency} vs {cov.currency}.",
-                    )
-                    continue
-
-                is_stale = False
-                notes = latest_obs.notes or ''
-                age_sec = None
-                if latest_obs.published_at:
-                    age_sec = max(0, int((now - latest_obs.published_at).total_seconds()))
-
-                if cov and cov.freshness_hours:
-                    if not as_of or (now - obs_dt).total_seconds() < 300:
-                        age_hours = (now - latest_obs.effective_at).total_seconds() / 3600.0
-                        if age_hours > cov.freshness_hours:
-                            is_stale = True
-                            notes = f"Observation is {int(age_hours)} hours old (threshold: {cov.freshness_hours}h)."
-
+        results = {}
+        for inst_id, instrument in unique.items():
+            coverage = coverages.get(inst_id)
+            rows = series_by_instrument.get(inst_id, [])
+            if len(rows) > 1:
                 results[inst_id] = ResolvedPrice(
-                    price=latest_obs.value,
-                    status=ResolutionStatus.STALE if is_stale else ResolutionStatus.AVAILABLE,
-                    source=latest_obs.source,
-                    source_reference=latest_obs.source_reference or inst.symbol,
-                    effective_at=latest_obs.effective_at,
-                    published_at=latest_obs.published_at,
-                    price_type=latest_obs.price_type,
-                    currency=latest_obs.currency,
-                    unit=latest_obs.unit,
-                    is_synthetic=latest_obs.is_synthetic,
-                    notes=notes,
-                    age_seconds=age_sec,
+                    None, ResolutionStatus.UNSUPPORTED, 'NONE', instrument.symbol, None,
+                    instrument.currency, coverage.unit if coverage else 'UNITS',
+                    price_type=coverage.price_type if coverage else None,
+                    notes='Multiple active series match. An exact series_id is required.',
                 )
-
-            elif inst_id in pending_set:
-                results[inst_id] = ResolvedPrice(
-                    price=None,
-                    status=ResolutionStatus.AWAITING_VERIFICATION,
-                    source='MANUAL_OPERATOR',
-                    source_reference=inst.symbol,
-                    effective_at=None,
-                    published_at=None,
-                    price_type=cov.price_type if cov else None,
-                    currency=inst.currency,
-                    unit=cov.unit if cov else 'UNITS',
-                    is_synthetic=False,
-                    notes='Awaiting verification by publisher.',
-                )
-
-            else:
-                results[inst_id] = ResolvedPrice(
-                    price=None,
-                    status=ResolutionStatus.MISSING,
-                    source='NONE',
-                    source_reference=inst.symbol,
-                    effective_at=None,
-                    published_at=None,
-                    price_type=cov.price_type if cov else None,
-                    currency=inst.currency,
-                    unit=cov.unit if cov else 'UNITS',
-                    is_synthetic=False,
-                    notes=f"No published price observation on or before {obs_dt.isoformat()}.",
-                )
-
+                continue
+            series = selected.get(inst_id)
+            obs = latest_by_series.get(series.id) if series else None
+            pending = bool(series and series.id in pending_series)
+            results[inst_id] = cls._resolve_selected(instrument, coverage, series, obs, pending, now, obs_dt)
         return results

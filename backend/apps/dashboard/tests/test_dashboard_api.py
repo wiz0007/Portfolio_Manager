@@ -12,7 +12,8 @@ from apps.assets.models.transactions import InvestmentTransaction
 from apps.assets.models.valuations import InvestmentValuation
 from apps.market_data.models.coverage import InstrumentCoverage
 from apps.market_data.models.instrument import Instrument, InstrumentStatus
-from apps.market_data.models.observation import ObservationStatus, PriceObservation
+from apps.market_data.models.observation import ObservationStatus, PriceObservation, TrustClass
+from apps.market_data.models.series import MarketDataSeries
 from apps.portfolios.models import Portfolio
 from apps.watchlists.models import WatchlistItem
 
@@ -467,13 +468,30 @@ class TestDashboardDataQualityAPI:
         InstrumentCoverage.objects.create(
             instrument=inst1,
             freshness_hours=24,
+            price_type="CLOSE",
+            currency="INR",
+            unit="UNITS",
+        )
+        series1 = MarketDataSeries.objects.create(
+            instrument_id=inst1.id,
+            price_type="CLOSE",
+            currency="INR",
+            unit="UNITS",
+            source="NSE",
+            exchange="NSE",
+            is_active=True,
         )
         PriceObservation.objects.create(
             instrument=inst1,
+            series=series1,
+            price_type="CLOSE",
             value=Decimal('100.00'),
             currency="INR",
+            unit="UNITS",
+            source="NSE",
             effective_at=datetime(2026, 10, 1, 10, 0, tzinfo=timezone.utc),
             status=ObservationStatus.PUBLISHED,
+            trust_class=TrustClass.VERIFIED_OFFICIAL,
             recorded_by=user_a,
         )
 
@@ -511,12 +529,32 @@ class TestDashboardWatchlistPreviewAPI:
             currency="INR",
             status=InstrumentStatus.ACTIVE,
         )
+        InstrumentCoverage.objects.create(
+            instrument=inst,
+            price_type="CLOSE",
+            currency="INR",
+            unit="UNITS",
+        )
+        series = MarketDataSeries.objects.create(
+            instrument_id=inst.id,
+            price_type="CLOSE",
+            currency="INR",
+            unit="UNITS",
+            source="NSE",
+            exchange="NSE",
+            is_active=True,
+        )
         PriceObservation.objects.create(
             instrument=inst,
+            series=series,
+            price_type="CLOSE",
             value=Decimal('1850.50'),
             currency="INR",
+            unit="UNITS",
+            source="NSE",
             effective_at=datetime(2026, 11, 17, 10, 0, tzinfo=timezone.utc),
             status=ObservationStatus.PUBLISHED,
+            trust_class=TrustClass.VERIFIED_OFFICIAL,
             recorded_by=user_a,
         )
 

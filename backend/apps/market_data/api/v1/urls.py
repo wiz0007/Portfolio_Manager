@@ -9,6 +9,7 @@ from apps.market_data.api.v1.views import (
     MarketDataProvidersView,
     MarketDataQuoteView,
     MarketDataRefreshView,
+    MarketDataSeriesListView,
     MarketDataSeriesVersionView,
 )
 from apps.market_data.api.v1.views.operations import (
@@ -40,6 +41,7 @@ urlpatterns = [
     path('market-data/quotes/<uuid:pk>/', MarketDataQuoteView.as_view(), name='market-data-quote-detail'),
     path('market-data/quotes/', MarketDataQuoteView.as_view(), name='market-data-quotes'),
     path('market-data/history/<uuid:pk>/', MarketDataHistoryView.as_view(), name='market-data-history'),
+    path('market-data/series/', MarketDataSeriesListView.as_view(), name='market-data-series-list'),
     path('market-data/series/<uuid:pk>/version/', MarketDataSeriesVersionView.as_view(), name='market-data-series-version'),
     path('market-data/overview/', MarketDataOverviewView.as_view(), name='market-data-overview'),
     path('market-data/providers/', MarketDataProvidersView.as_view(), name='market-data-providers'),

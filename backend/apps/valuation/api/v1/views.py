@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from rest_framework import permissions, status
+from rest_framework import status
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -15,13 +15,14 @@ from apps.valuation.api.v1.serializers import (
 )
 from apps.valuation.services.calculation.projection_engine import ProjectionEngine
 from apps.valuation.services.valuation_orchestrator import ValuationOrchestrator
+from core.permissions import IsAuthenticatedAndEmailVerified
 
 
 class BaseInvestmentScopedView(APIView):
     """
     Base view providing verified ownership lookup for an investment holding.
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticatedAndEmailVerified]
 
     def get_investment(self, investment_id) -> Investment:
         try:

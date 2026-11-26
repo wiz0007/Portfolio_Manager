@@ -72,8 +72,6 @@ class MarketDataRouter:
 
         if db1 == db2:
             return True
-        if obj1._meta.model_name == 'marketdatapoint' or obj2._meta.model_name == 'marketdatapoint':
-            return True
         return False
 
     def allow_migrate(

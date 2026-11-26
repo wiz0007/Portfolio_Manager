@@ -14,6 +14,10 @@ from apps.market_data.providers.truedata_provider import TrueDataMarketDataProvi
 logger = logging.getLogger(__name__)
 
 
+class ProviderUnavailableError(RuntimeError):
+    """Raised when no real provider with the required capability is configured."""
+
+
 class MarketDataProviderRegistry:
     """
     Centralized registry for market data providers.
@@ -42,27 +46,33 @@ class MarketDataProviderRegistry:
 
     def get_provider_for_instrument(self, instrument) -> BaseMarketDataProvider:
         mode = getattr(settings, 'MARKET_DATA_PROVIDER_MODE', 'DEMO').upper()
-
-        # In DEMO mode, DEMO provider handles all requests
         if mode == 'DEMO':
             return self._providers['DEMO']
+        if mode != 'PRODUCTION':
+            raise ProviderUnavailableError(f'Unsupported MARKET_DATA_PROVIDER_MODE: {mode}')
 
-        # In PRODUCTION mode:
         asset_class = getattr(instrument, 'asset_class', 'EQUITY')
-
-        # Mutual funds default to AMFI
         if asset_class == 'MUTUAL_FUND':
-            return self._providers.get('AMFI', self._providers['DEMO'])
+            provider = self._providers.get('AMFI')
+        elif asset_class in ('EQUITY', 'INDEX', 'COMMODITY'):
+            provider = self._providers.get('TRUEDATA')
+        else:
+            provider = None
 
-        # Equities/Indices try TrueData if configured, else fallback to DEMO
-        if asset_class in ['EQUITY', 'INDEX']:
-            truedata = self._providers.get('TRUEDATA')
-            if truedata and getattr(truedata, 'has_credentials', False):
-                return truedata
-            return self._providers['DEMO']
-
-        # Default fallback
-        return self._providers['DEMO']
+        if provider is None:
+            raise ProviderUnavailableError(
+                f'No production market-data provider is configured for asset class {asset_class}.'
+            )
+        capabilities = provider.capabilities
+        if asset_class not in capabilities.supported_asset_classes:
+            raise ProviderUnavailableError(
+                f'{provider.provider_name} does not support {asset_class}.'
+            )
+        if not any((capabilities.realtime, capabilities.intraday, capabilities.daily_eod, capabilities.historical)):
+            raise ProviderUnavailableError(f'{provider.provider_name} has no implemented capabilities.')
+        if provider.provider_name == 'TRUEDATA' and not getattr(provider, 'is_implemented', False):
+            raise ProviderUnavailableError('TrueData adapter is not implemented; no demo fallback is allowed in production.')
+        return provider
 
     def list_providers(self) -> List[Dict[str, any]]:
         results = []

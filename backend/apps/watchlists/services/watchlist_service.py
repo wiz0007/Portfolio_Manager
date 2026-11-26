@@ -71,18 +71,18 @@ class WatchlistService:
         cls,
         item: WatchlistItem,
         resolved: Optional[ResolvedPrice] = None,
+        movement=None,
     ) -> Dict[str, Any]:
         inst = item.instrument
         if resolved is None:
             resolved = PriceResolver.resolve_price(inst)
 
-        movement = PriceMovementService.calculate_movement(
-            instrument=inst,
-            current_price=resolved.price,
-            current_dt=resolved.effective_at,
-            currency=resolved.currency,
-            unit=resolved.unit,
-        )
+        if movement is None:
+            movement = PriceMovementService.calculate_movement(
+                instrument=inst, current_price=resolved.price,
+                current_dt=resolved.effective_at, currency=resolved.currency,
+                unit=resolved.unit, price_type=resolved.price_type, series_id=resolved.series_id,
+            )
 
         ref_data = getattr(inst, 'reference_data', None)
 
@@ -143,8 +143,13 @@ class WatchlistService:
         # Bulk resolve market prices for all watched instruments
         instruments = [item.instrument for item in items]
         price_map = PriceResolver.resolve_prices_bulk(instruments)
+        movement_map = PriceMovementService.calculate_movements_bulk(price_map)
 
-        return [cls.get_annotated_item_data(item, resolved=price_map.get(item.instrument.id)) for item in items]
+        return [
+            cls.get_annotated_item_data(
+                item, resolved=price_map.get(item.instrument.id), movement=movement_map.get(item.instrument.id)
+            ) for item in items
+        ]
 
     @classmethod
     def get_item(cls, user: Any, item_id: uuid.UUID | str) -> Dict[str, Any]:

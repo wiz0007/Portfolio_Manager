@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import {
   savingsAccountSchema,
   SavingsAccountFormData,
+  SavingsAccountInput,
 } from '../../schemas/investmentSchemas';
 import {
   FormField,
@@ -61,7 +62,7 @@ export const SavingsAccountForm: React.FC<SavingsAccountFormProps> = ({
     control,
     watch,
     formState: { errors },
-  } = useForm<SavingsAccountFormData>({
+  } = useForm<SavingsAccountInput, any, SavingsAccountFormData>({
     resolver: zodResolver(savingsAccountSchema),
     defaultValues: {
       portfolio_id: portfolioId,

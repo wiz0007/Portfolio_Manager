@@ -60,6 +60,7 @@ class MutualFundValuationStrategy(BaseAssetValuationStrategy):
         nav_price = None
         source_name = 'MANUAL'
         source_ref = ''
+        market_data_provenance = {}
         is_synthetic = False
         quote_ts = obs_dt
         val_status = ValuationStatus.SUCCESS
@@ -67,11 +68,10 @@ class MutualFundValuationStrategy(BaseAssetValuationStrategy):
         # 1. Check instrument link via canonical PriceResolver
         if investment.instrument:
             try:
-                resolved = PriceResolver.resolve_price(investment.instrument, as_of=obs_dt)
+                resolved = PriceResolver.resolve_price(investment.instrument, as_of=obs_dt, price_type='NAV')
                 if resolved.price is not None and resolved.status in (
                     ResolutionStatus.AVAILABLE,
                     ResolutionStatus.STALE,
-                    ResolutionStatus.SYNTHETIC,
                 ):
                     nav_price = resolved.price
                     source_name = resolved.source or 'AMFI'
@@ -86,14 +86,7 @@ class MutualFundValuationStrategy(BaseAssetValuationStrategy):
                     f"Failed to fetch NAV for mutual fund instrument {investment.instrument_id}: {e}"
                 )
 
-            if nav_price is None:
-                latest_quote = investment.instrument.latest_quote
-                if latest_quote and latest_quote.price:
-                    nav_price = latest_quote.price
-                    source_name = latest_quote.provider or 'MARKET_DATA'
-                    source_ref = investment.instrument.symbol
-                    is_synthetic = latest_quote.is_synthetic
-                    quote_ts = latest_quote.timestamp
+
 
         # 2. If NAV is unavailable, check for user explicit estimate
         if nav_price is None:
@@ -130,5 +123,6 @@ class MutualFundValuationStrategy(BaseAssetValuationStrategy):
                 'is_synthetic': is_synthetic,
                 'source': source_name,
                 'scheme_name': details.get('scheme_name', ''),
+                **market_data_provenance,
             },
         )

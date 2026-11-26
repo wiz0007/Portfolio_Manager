@@ -1,7 +1,6 @@
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import generics, status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.assets.api.v1.serializers import (
@@ -12,6 +11,7 @@ from apps.assets.api.v1.serializers import (
 )
 from apps.assets.models import Investment
 from apps.portfolios.models import Portfolio
+from core.permissions import IsAuthenticatedAndEmailVerified as IsAuthenticated
 
 
 class InvestmentListCreateView(generics.ListCreateAPIView):
@@ -159,4 +159,7 @@ class InvestmentDetailView(generics.RetrieveUpdateDestroyAPIView):
         tags=["Investments"],
     )
     def delete(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.transactions.all().delete()
+        instance.valuations.all().delete()
         return super().delete(request, *args, **kwargs)

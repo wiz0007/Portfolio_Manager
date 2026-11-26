@@ -67,6 +67,27 @@ export interface HistoricalPoint {
   change_percent?: string | null;
   interval: string;
   is_synthetic: boolean;
+  source?: string;
+  trust_class?: string;
+  price_type?: string;
+  currency?: string;
+  unit?: string;
+}
+
+export interface HistoricalSeriesResponse {
+  instrument_id: string;
+  series_id: string | null;
+  data_version: number | null;
+  frequency: string;
+  price_type: string | null;
+  currency: string;
+  unit: string;
+  start_date: string | null;
+  end_date: string | null;
+  last_published_at: string | null;
+  trust_class: string;
+  message: string;
+  points: HistoricalPoint[];
 }
 
 export interface MarketOverviewItem {

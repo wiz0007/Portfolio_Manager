@@ -1,6 +1,6 @@
 import { apiClient } from '@/services/api/client';
 import {
-  HistoricalPoint,
+  HistoricalSeriesResponse,
   Instrument,
   MarketOverviewData,
   MarketQuote,
@@ -49,7 +49,7 @@ export const marketDataApi = {
       series_id?: string;
       signal?: AbortSignal;
     }
-  ): Promise<HistoricalPoint[]> => {
+  ): Promise<HistoricalSeriesResponse> => {
     const query = new URLSearchParams();
     if (options?.days) query.append('days', options.days.toString());
     if (options?.from) query.append('from', options.from);
@@ -59,7 +59,29 @@ export const marketDataApi = {
     if (options?.price_type) query.append('price_type', options.price_type);
     if (options?.series_id) query.append('series_id', options.series_id);
     const qs = query.toString() ? `?${query.toString()}` : '';
-    return apiClient.get<HistoricalPoint[]>(`/market-data/history/${id}/${qs}`, { signal: options?.signal });
+    return apiClient.get<HistoricalSeriesResponse>(`/market-data/history/${id}/${qs}`, { signal: options?.signal });
+  },
+
+  getSeries: (instrumentId: string) => {
+    return apiClient.get<Array<{
+      id: string; instrument_id: string; exchange: string; source: string;
+      price_type: string; currency: string; unit: string; data_version: number;
+      last_published_at: string | null;
+    }>>(`/market-data/series/?instrument_id=${encodeURIComponent(instrumentId)}`);
+  },
+
+  createManualSeries: (instrumentId: string, priceType: string, unit: string) => {
+    return apiClient.post<{
+      id: string; instrument_id: string; exchange: string; source: string;
+      price_type: string; currency: string; unit: string; data_version: number;
+      last_published_at: string | null;
+    }>('/market-data/series/', { instrument_id: instrumentId, price_type: priceType, unit });
+  },
+
+  getSeriesVersion: (seriesId: string) => {
+    return apiClient.get<{ series_id: string; instrument_id: string; data_version: number; last_published_at: string | null }>(
+      `/market-data/series/${seriesId}/version/`
+    );
   },
 
   getMarketOverview: (): Promise<MarketOverviewData> => {
@@ -119,6 +141,7 @@ export const marketDataApi = {
 
   createPriceObservation: (data: {
     instrument: string;
+    series: string;
     price_type: string;
     value: string;
     currency?: string;

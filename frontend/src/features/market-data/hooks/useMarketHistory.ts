@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { marketDataApi } from '../api/marketDataApi';
-import { HistoricalPoint } from '../types';
+import { HistoricalSeriesResponse } from '../types';
 
 export const MARKET_HISTORY_QUERY_KEYS = {
   detail: (
@@ -39,7 +40,7 @@ export const useMarketHistory = ({
   };
   const days = daysMap[range] || 30;
 
-  return useQuery<HistoricalPoint[]>({
+  const historyQuery = useQuery<HistoricalSeriesResponse>({
     queryKey: MARKET_HISTORY_QUERY_KEYS.detail(instrumentId, seriesId, range, frequency, priceType),
     queryFn: ({ signal }) =>
       marketDataApi.getHistory(instrumentId, {
@@ -47,6 +48,7 @@ export const useMarketHistory = ({
         interval: frequency,
         period: range,
         price_type: priceType,
+        series_id: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(seriesId) ? seriesId : undefined,
         signal,
       }),
     enabled: Boolean(instrumentId) && enabled,
@@ -57,6 +59,18 @@ export const useMarketHistory = ({
     refetchInterval: false,
     retry: 2,
   });
+
+  const versionQuery = useMarketSeriesVersion(historyQuery.data?.series_id || undefined, Boolean(historyQuery.data?.series_id));
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const historyVersion = historyQuery.data?.data_version;
+    const serverVersion = versionQuery.data?.data_version;
+    if (historyVersion != null && serverVersion != null && serverVersion > historyVersion) {
+      queryClient.invalidateQueries({ queryKey: MARKET_HISTORY_QUERY_KEYS.detail(instrumentId, seriesId, range, frequency, priceType) });
+    }
+  }, [historyQuery.data?.data_version, versionQuery.data?.data_version, queryClient, instrumentId, seriesId, range, frequency, priceType]);
+
+  return historyQuery;
 };
 
 export interface SeriesVersionData {
@@ -69,10 +83,8 @@ export interface SeriesVersionData {
 export const useMarketSeriesVersion = (seriesId?: string, enabled = true) => {
   return useQuery<SeriesVersionData>({
     queryKey: ['market-series-version', seriesId],
-    queryFn: async ({ signal }) => {
-      const res = await fetch(`/api/v1/market-data/series/${seriesId}/version/`, { signal });
-      if (!res.ok) throw new Error('Failed to retrieve series version');
-      return res.json();
+    queryFn: async () => {
+      return marketDataApi.getSeriesVersion(seriesId!);
     },
     enabled: Boolean(seriesId) && seriesId !== 'default' && enabled,
     staleTime: 0, // Checks on focus to discover publication changes without full history polling

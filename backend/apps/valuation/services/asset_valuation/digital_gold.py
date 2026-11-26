@@ -68,7 +68,6 @@ class DigitalGoldValuationStrategy(BaseAssetValuationStrategy):
                 if resolved.price is not None and resolved.status in (
                     ResolutionStatus.AVAILABLE,
                     ResolutionStatus.STALE,
-                    ResolutionStatus.SYNTHETIC,
                 ):
                     rate_per_gram = resolved.price
                     source_name = resolved.source or 'MANUAL_VERIFIED'

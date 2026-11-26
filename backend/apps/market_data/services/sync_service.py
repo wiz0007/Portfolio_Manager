@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Dict, List
 
+from django.db import models
 from django.utils import timezone
 
 from apps.market_data.models.instrument import Instrument
@@ -33,94 +34,93 @@ class InstrumentIdentitySyncService:
         Creates an outbox event in the Primary Database ('default') inside the
         same transaction as the canonical instrument mutation.
         """
-        payload = {
-            'symbol': instrument.symbol,
-            'name': instrument.name,
-            'asset_class': instrument.asset_class,
-            'product_type': instrument.product_type or '',
-            'exchange': instrument.exchange or '',
-            'currency': instrument.currency or 'INR',
-            'isin': instrument.isin,
-            'scheme_code': instrument.scheme_code,
-            'security_code': instrument.security_code,
-            'is_active': instrument.is_active,
-            'identity_version': instrument.identity_version or 1,
-        }
+        canonical = Instrument.objects.using(cls.SOURCE_DB).get(pk=instrument.pk)
+        payload = canonical.to_sync_payload()
         event = InstrumentSyncEvent.objects.using(cls.SOURCE_DB).create(
             instrument_id=instrument.id,
-            identity_version=instrument.identity_version or 1,
+            identity_version=canonical.identity_version or 1,
             payload=payload,
             status=SyncEventStatus.PENDING,
         )
-        # Attempt immediate dispatch if market_data database is available
-        try:
-            cls.apply_sync_event(event)
-        except Exception as e:
-            logger.warning("Immediate outbox sync dispatch failed for %s, will retry in background: %s", instrument.symbol, e)
+        # Delivery is performed only by the scheduled outbox processor. The
+        # event row is committed atomically with the canonical Instrument save.
         return event
 
     @classmethod
     def apply_sync_event(cls, event: InstrumentSyncEvent) -> bool:
+        """Idempotently apply an event to the secondary projection.
+
+        The caller owns and locks the primary outbox row. The secondary write is
+        independently atomic; a retry after a crash is safe because versions are
+        monotonic and older events cannot overwrite newer projections.
         """
-        Idempotently applies an outbox sync event to Market Data Storage.
-        Guarantees that an older event never overwrites a newer projection version.
-        """
+        from django.db import transaction
+
         target_db = cls._target_db()
         payload = event.payload
-        inst_id = event.instrument_id
         target_version = event.identity_version
-
-        existing = MarketInstrumentReference.objects.using(target_db).filter(id=inst_id).first()
-        if existing and existing.sync_version > target_version:
-            # Newer version already synchronized; mark this event as processed
-            event.status = SyncEventStatus.PROCESSED
-            event.processed_at = timezone.now()
-            event.save(using=cls.SOURCE_DB)
-            return True
-
-        MarketInstrumentReference.objects.using(target_db).update_or_create(
-            id=inst_id,
-            defaults={
-                'symbol': payload['symbol'],
-                'name': payload['name'],
-                'asset_class': payload['asset_class'],
-                'product_type': payload['product_type'],
-                'exchange': payload['exchange'],
-                'currency': payload['currency'],
-                'isin': payload['isin'],
-                'scheme_code': payload['scheme_code'],
-                'security_code': payload['security_code'],
-                'is_active': payload['is_active'],
+        with transaction.atomic(using=target_db):
+            existing = (
+                MarketInstrumentReference.objects.using(target_db)
+                .select_for_update().filter(id=event.instrument_id).first()
+            )
+            if existing and existing.sync_version >= target_version:
+                return True
+            defaults = {
+                'symbol': payload['symbol'], 'name': payload['name'],
+                'asset_class': payload['asset_class'], 'product_type': payload.get('product_type', ''),
+                'exchange': payload.get('exchange', ''), 'currency': payload.get('currency', 'INR'),
+                'isin': payload.get('isin'), 'scheme_code': payload.get('scheme_code'),
+                'security_code': payload.get('security_code'), 'is_active': payload['is_active'],
                 'sync_version': target_version,
-            },
-        )
-        event.status = SyncEventStatus.PROCESSED
-        event.processed_at = timezone.now()
-        event.save(using=cls.SOURCE_DB)
+            }
+            if existing:
+                for field, value in defaults.items():
+                    setattr(existing, field, value)
+                existing.save(using=target_db, update_fields=list(defaults.keys()))
+            else:
+                MarketInstrumentReference.objects.using(target_db).create(
+                    id=event.instrument_id, **defaults
+                )
         return True
 
     @classmethod
     def process_pending_sync_events(cls, limit: int = 100) -> Dict[str, int]:
-        """Processes pending or failed sync outbox events."""
-        pending_events = (
+        """Process pending events with row locking and retry-safe delivery."""
+        from django.db import transaction
+
+        processed = failed = 0
+        event_ids = list(
             InstrumentSyncEvent.objects.using(cls.SOURCE_DB)
             .filter(status__in=[SyncEventStatus.PENDING, SyncEventStatus.FAILED])
-            .order_by('created_at')[:limit]
+            .order_by('created_at').values_list('id', flat=True)[:limit]
         )
-        processed = 0
-        failed = 0
-
-        for event in pending_events:
+        for event_id in event_ids:
             try:
-                event.attempts += 1
-                cls.apply_sync_event(event)
+                with transaction.atomic(using=cls.SOURCE_DB):
+                    event = (
+                        InstrumentSyncEvent.objects.using(cls.SOURCE_DB)
+                        .select_for_update().get(pk=event_id)
+                    )
+                    if event.status == SyncEventStatus.PROCESSED:
+                        continue
+                    event.attempts += 1
+                    cls.apply_sync_event(event)
+                    event.status = SyncEventStatus.PROCESSED
+                    event.processed_at = timezone.now()
+                    event.last_error = ''
+                    event.save(using=cls.SOURCE_DB, update_fields=[
+                        'attempts', 'status', 'processed_at', 'last_error'
+                    ])
                 processed += 1
-            except Exception as e:
-                event.status = SyncEventStatus.FAILED
-                event.last_error = str(e)
-                event.save(using=cls.SOURCE_DB)
+            except Exception as exc:
+                InstrumentSyncEvent.objects.using(cls.SOURCE_DB).filter(pk=event_id).update(
+                    status=SyncEventStatus.FAILED,
+                    attempts=models.F('attempts') + 1,
+                    last_error=str(exc)[:4000],
+                )
+                logger.exception('Instrument sync event %s failed', event_id)
                 failed += 1
-
         return {'processed': processed, 'failed': failed}
 
     @classmethod
@@ -198,6 +198,7 @@ class InstrumentIdentitySyncService:
                     or ref.scheme_code != inst.scheme_code
                     or ref.security_code != inst.security_code
                     or ref.is_active != inst.is_active
+                    or ref.sync_version != (inst.identity_version or 1)
                 )
                 if has_diff:
                     ref.symbol = inst.symbol
@@ -243,7 +244,7 @@ class InstrumentIdentitySyncService:
             'target_db': target_db,
             'total_canonical': total_canonical,
             'synced_total': synced_total,
-            'created': len(to_create),
+            'created': max(0, synced_total - len(existing_refs)),
             'updated': len(to_update),
             'status': 'SYNCHRONIZED' if synced_total >= total_canonical else 'DISCREPANCY_DETECTED',
         }

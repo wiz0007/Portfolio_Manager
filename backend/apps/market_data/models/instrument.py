@@ -1,10 +1,6 @@
 import uuid
-from typing import TYPE_CHECKING, Optional
 
 from django.db import models
-
-if TYPE_CHECKING:
-    from apps.market_data.models.market_data_point import MarketDataPoint
 
 
 class AssetClass(models.TextChoices):
@@ -26,7 +22,36 @@ class InstrumentStatus(models.TextChoices):
     INACTIVE = 'INACTIVE', 'Inactive'
 
 
+class InstrumentQuerySet(models.QuerySet):
+    IDENTITY_FIELDS = {
+        'symbol', 'name', 'asset_class', 'product_type', 'exchange', 'currency',
+        'isin', 'scheme_code', 'security_code', 'status', 'is_active', 'identity_version',
+    }
+
+    def update(self, **kwargs):
+        from django.core.exceptions import ValidationError
+        if self.IDENTITY_FIELDS.intersection(kwargs):
+            raise ValidationError(
+                'Canonical instrument identity must be changed through Instrument.save() so its outbox event is recorded.'
+            )
+        return super().update(**kwargs)
+
+    def bulk_update(self, objs, fields, **kwargs):
+        from django.core.exceptions import ValidationError
+        if self.IDENTITY_FIELDS.intersection(fields):
+            raise ValidationError(
+                'Bulk identity updates are disabled. Save each Instrument so its outbox event is recorded.'
+            )
+        return super().bulk_update(objs, fields, **kwargs)
+
+    def bulk_create(self, objs, **kwargs):
+        from django.core.exceptions import ValidationError
+        raise ValidationError('Bulk creation of canonical instruments is disabled; save each Instrument to emit its outbox event.')
+
+
 class Instrument(models.Model):
+    objects = InstrumentQuerySet.as_manager()
+
     """
     Standardized, provider-independent financial instrument definition.
     Represents equities, mutual funds, indices, commodities, etc.
@@ -74,8 +99,20 @@ class Instrument(models.Model):
             models.Index(fields=['scheme_code'], name='inst_scheme_idx'),
         ]
 
+    IDENTITY_FIELDS = (
+        'symbol', 'name', 'asset_class', 'product_type', 'exchange',
+        'currency', 'isin', 'scheme_code', 'security_code', 'status', 'is_active',
+    )
+
     def save(self, *args, **kwargs):
-        # Keep is_active and status synchronized bidirectionally
+        """Atomically persist canonical identity and its primary-database outbox row."""
+        from django.db import transaction
+
+        using = kwargs.get('using') or self._state.db or 'default'
+        if using != 'default':
+            raise ValueError('Canonical Instrument records must be saved to the default database.')
+        kwargs['using'] = using
+
         if not self.is_active and self.status == InstrumentStatus.ACTIVE:
             self.status = InstrumentStatus.INACTIVE
         elif self.status != InstrumentStatus.ACTIVE:
@@ -83,28 +120,56 @@ class Instrument(models.Model):
         else:
             self.is_active = True
 
-        is_new = self._state.adding
-        if not is_new and self.pk:
-            # Monotonically increment identity version on update
-            self.identity_version = (self.identity_version or 0) + 1
+        with transaction.atomic(using=using):
+            is_new = self._state.adding
+            identity_changed = is_new
+            if not is_new and self.pk:
+                previous = type(self).objects.using(using).select_for_update().filter(pk=self.pk).values(
+                    *self.IDENTITY_FIELDS, 'identity_version'
+                ).first()
+                if previous:
+                    candidate_fields = set(self.IDENTITY_FIELDS)
+                    if kwargs.get('update_fields') is not None:
+                        candidate_fields &= set(kwargs['update_fields'])
+                    identity_changed = any(
+                        previous[field] != getattr(self, field) for field in candidate_fields
+                    )
+                    self.identity_version = int(previous['identity_version'] or 1) + (1 if identity_changed else 0)
 
-        super().save(*args, **kwargs)
+            if kwargs.get('update_fields') is not None and identity_changed:
+                kwargs['update_fields'] = set(kwargs['update_fields']) | {'identity_version', 'updated_at'}
 
-        # Durable outbox record on Primary Database ('default')
-        try:
-            from apps.market_data.services.sync_service import InstrumentIdentitySyncService
-            InstrumentIdentitySyncService.record_sync_event(self)
-        except Exception:
-            pass
+            super().save(*args, **kwargs)
+            if identity_changed:
+                from apps.market_data.services.sync_service import InstrumentIdentitySyncService
+                # Event insertion failure rolls back the canonical instrument write.
+                InstrumentIdentitySyncService.record_sync_event(self)
+
+    def to_sync_payload(self) -> dict:
+        return {
+            'symbol': self.symbol,
+            'name': self.name,
+            'asset_class': self.asset_class,
+            'product_type': self.product_type or '',
+            'exchange': self.exchange or '',
+            'currency': self.currency or 'INR',
+            'isin': self.isin,
+            'scheme_code': self.scheme_code,
+            'security_code': self.security_code,
+            'is_active': self.is_active,
+            'identity_version': self.identity_version or 1,
+        }
 
     def __str__(self) -> str:
         exchange_str = f" ({self.exchange})" if self.exchange else ""
         return f"{self.symbol}{exchange_str} - {self.name}"
 
     @property
-    def latest_quote(self) -> Optional['MarketDataPoint']:
-        """Returns the most recent market data point for this instrument."""
-        return self.data_points.order_by('-timestamp').first()
+    def latest_quote(self):
+        """Compatibility accessor backed exclusively by the authoritative resolver."""
+        from apps.market_data.services.market_data_service import MarketDataService
+        quote = MarketDataService.get_latest_quote(self)
+        return quote if quote.price is not None else None
 
     @property
     def coverage(self):

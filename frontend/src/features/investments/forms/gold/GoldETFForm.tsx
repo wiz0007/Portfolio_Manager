@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import {
   goldEtfSchema,
   GoldEtfFormData,
+  GoldEtfInput,
 } from '../../schemas/investmentSchemas';
 import {
   FormField,
@@ -38,7 +39,7 @@ export const GoldETFForm: React.FC<GoldETFFormProps> = ({
     control,
     watch,
     formState: { errors },
-  } = useForm<GoldEtfFormData>({
+  } = useForm<GoldEtfInput, any, GoldEtfFormData>({
     resolver: zodResolver(goldEtfSchema),
     defaultValues: {
       portfolio_id: portfolioId,

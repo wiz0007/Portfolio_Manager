@@ -27,6 +27,7 @@ class InstrumentRequest(models.Model):
         on_delete=models.CASCADE,
         related_name='instrument_requests',
         db_index=True,
+        db_constraint=False,
     )
     raw_name = models.CharField(max_length=255)
     asset_class = models.CharField(
@@ -61,6 +62,7 @@ class InstrumentRequest(models.Model):
         null=True,
         blank=True,
         related_name='reviewed_instrument_requests',
+        db_constraint=False,
     )
     reviewed_at = models.DateTimeField(null=True, blank=True)
     rejection_reason = models.TextField(blank=True, default='')

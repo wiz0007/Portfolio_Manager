@@ -29,11 +29,19 @@ export const MarketOverviewPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'EQUITY' | 'MUTUAL_FUND'>('EQUITY');
 
   // TanStack Query caching for historical timeseries chart (1h staleTime, 24h gcTime)
-  const { data: historyPoints = [], isLoading: isLoadingHistory } = useMarketHistory({
+  const { data: historyResponse, isLoading: isLoadingHistory } = useMarketHistory({
     instrumentId: selectedInstrument?.id || '',
     range: selectedRange,
+    priceType: selectedInstrument?.asset_class === 'MUTUAL_FUND'
+      ? 'NAV'
+      : selectedInstrument?.asset_class === 'INDEX'
+        ? 'CLOSE'
+        : selectedInstrument?.asset_class === 'COMMODITY'
+          ? 'INDICATIVE_VALUATION'
+          : 'LTP',
     enabled: Boolean(selectedInstrument?.id),
   });
+  const historyPoints = historyResponse?.points ?? [];
 
   // Load initial market overview data
   const loadOverview = async () => {
@@ -271,6 +279,12 @@ export const MarketOverviewPage: React.FC = () => {
         <div className="lg:col-span-7 space-y-6">
           {selectedInstrument ? (
             <>
+              {historyPoints.some((point) => point.is_synthetic) && (
+                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                  Synthetic development data is displayed for demonstration only. It is not eligible for portfolio valuation.
+                </div>
+              )}
+
               {/* Interactive Price Chart */}
               <PriceChart
                 points={historyPoints}

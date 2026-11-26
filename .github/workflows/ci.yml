@@ -20,25 +20,43 @@ jobs:
     name: Backend Lint, Checks & Tests
     runs-on: ubuntu-latest
     services:
-      postgres:
+      postgres-primary:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: ci_test_db
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_password
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: portfolio_primary
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d portfolio_primary"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      postgres-market-data:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: portfolio_market_data
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d portfolio_market_data"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
 
+    defaults:
+      run:
+        working-directory: backend
+
     env:
       DJANGO_SETTINGS_MODULE: config.settings.test
-      CI_TEST_DATABASE_URL: postgresql://test_user:test_password@localhost:5432/ci_test_db
       SECRET_KEY: ci-test-secret-key-not-for-production
-      PYTHONPATH: backend
+      PYTHONPATH: .
+      CI_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/portfolio_primary
+      CI_TEST_MARKET_DATA_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5433/portfolio_market_data
 
     steps:
       - uses: actions/checkout@v4
@@ -51,22 +69,22 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r backend/requirements/development.txt
+          pip install -r requirements/development.txt
 
       - name: Run Ruff Linter
-        run: ruff check backend
+        run: ruff check .
 
       - name: Run Django System Checks
-        run: python backend/manage.py check
+        run: python manage.py check
 
       - name: Verify Migration Consistency
         run: |
-          python backend/manage.py migrate --database default
-          python backend/manage.py migrate --database market_data
-          python backend/manage.py makemigrations --check --dry-run
+          python manage.py migrate --database default
+          python manage.py migrate --database market_data
+          python manage.py makemigrations --check --dry-run
 
       - name: Run Pytest Test Suite
-        run: pytest backend
+        run: pytest -v
 
   frontend-suite:
     name: Frontend Lint, Typecheck & Tests

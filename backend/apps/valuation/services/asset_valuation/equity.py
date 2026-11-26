@@ -60,6 +60,7 @@ class EquityValuationStrategy(BaseAssetValuationStrategy):
         market_price = None
         source_name = 'MANUAL'
         source_ref = ''
+        market_data_provenance = {}
         is_synthetic = False
         quote_ts = obs_dt
         val_status = ValuationStatus.SUCCESS
@@ -71,11 +72,16 @@ class EquityValuationStrategy(BaseAssetValuationStrategy):
                 if resolved.price is not None and resolved.status in (
                     ResolutionStatus.AVAILABLE,
                     ResolutionStatus.STALE,
-                    ResolutionStatus.SYNTHETIC,
                 ):
                     market_price = resolved.price
                     source_name = resolved.source or 'MANUAL_VERIFIED'
                     source_ref = resolved.source_reference or investment.instrument.symbol
+                    market_data_provenance = {
+                        'series_id': resolved.series_id,
+                        'observation_id': resolved.observation_id,
+                        'series_data_version': resolved.data_version,
+                        'price_type': resolved.price_type,
+                    }
                     is_synthetic = resolved.is_synthetic
                     if resolved.effective_at:
                         quote_ts = resolved.effective_at
@@ -86,15 +92,17 @@ class EquityValuationStrategy(BaseAssetValuationStrategy):
                     f"Failed to fetch market price for instrument {investment.instrument_id}: {e}"
                 )
 
-            # Fallback to latest_quote on instrument if PriceResolver returned missing
-            if market_price is None:
-                latest_quote = investment.instrument.latest_quote
-                if latest_quote and latest_quote.price:
-                    market_price = latest_quote.price
-                    source_name = latest_quote.provider or 'MARKET_DATA'
-                    source_ref = investment.instrument.symbol
-                    is_synthetic = latest_quote.is_synthetic
-                    quote_ts = latest_quote.timestamp
+        if market_price is None and investment.instrument:
+            latest = getattr(investment.instrument, 'latest_quote', None)
+            if latest and latest.price is not None and getattr(latest, 'provider', '') != 'DEMO':
+                market_price = latest.price
+                source_name = getattr(latest, 'provider', 'MARKET_DATA')
+                source_ref = investment.instrument.symbol
+                is_synthetic = getattr(latest, 'is_synthetic', False)
+                if getattr(latest, 'timestamp', None):
+                    quote_ts = latest.timestamp
+
+
 
         # 2. If market price is unavailable, check for user explicit estimate
         if market_price is None:
@@ -131,5 +139,6 @@ class EquityValuationStrategy(BaseAssetValuationStrategy):
                 'is_synthetic': is_synthetic,
                 'source': source_name,
                 'symbol': source_ref or details.get('symbol', ''),
+                **market_data_provenance,
             },
         )

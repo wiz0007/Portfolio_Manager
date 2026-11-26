@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import {
   digitalGoldSchema,
   DigitalGoldFormData,
+  DigitalGoldInput,
 } from '../../schemas/investmentSchemas';
 import {
   FormField,
@@ -46,7 +47,7 @@ export const DigitalGoldForm: React.FC<DigitalGoldFormProps> = ({
     control,
     watch,
     formState: { errors },
-  } = useForm<DigitalGoldFormData>({
+  } = useForm<DigitalGoldInput, any, DigitalGoldFormData>({
     resolver: zodResolver(digitalGoldSchema),
     defaultValues: {
       portfolio_id: portfolioId,

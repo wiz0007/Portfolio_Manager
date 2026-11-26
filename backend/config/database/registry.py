@@ -23,6 +23,8 @@ Market Data Storage Database ('market_data'):
 
 from typing import Dict, Set
 
+from django.core.exceptions import ImproperlyConfigured
+
 PRIMARY_DATABASE = 'default'
 MARKET_DATA_DATABASE = 'market_data'
 
@@ -93,7 +95,11 @@ def get_model_owner(app_label: str, model_name: str) -> str:
     app_models = MODEL_OWNERSHIP.get(app_label.lower())
     if app_models and model_name.lower() in app_models:
         return app_models[model_name.lower()]
-    # Any unrecognized or newly introduced application defaults to primary database
+    if app_label.lower() == 'market_data':
+        raise ImproperlyConfigured(
+            f"Model ownership is missing for market_data.{model_name}. Add it explicitly to MODEL_OWNERSHIP."
+        )
+    # Non-market-data application models remain primary-owned by default.
     return PRIMARY_DATABASE
 
 

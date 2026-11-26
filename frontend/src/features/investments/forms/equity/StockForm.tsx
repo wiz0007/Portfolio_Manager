@@ -5,6 +5,7 @@ import { Calculator } from 'lucide-react';
 import {
   stockSchema,
   StockFormData,
+  StockInput,
 } from '../../schemas/investmentSchemas';
 import {
   FormField,
@@ -39,7 +40,7 @@ export const StockForm: React.FC<StockFormProps> = ({
     control,
     watch,
     formState: { errors },
-  } = useForm<StockFormData>({
+  } = useForm<StockInput, any, StockFormData>({
     resolver: zodResolver(stockSchema),
     defaultValues: {
       portfolio_id: portfolioId,

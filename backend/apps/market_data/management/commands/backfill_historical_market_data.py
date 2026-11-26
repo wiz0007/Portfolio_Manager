@@ -1,4 +1,4 @@
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from apps.market_data.models.instrument import Instrument, InstrumentStatus
 from apps.market_data.services.backfill_service import HistoricalBackfillService
@@ -11,9 +11,16 @@ class Command(BaseCommand):
         parser.add_argument('--symbols', type=str, help='Comma-separated list of symbols to backfill')
         parser.add_argument('--asset-class', type=str, help='Filter by asset class (EQUITY, INDEX, MUTUAL_FUND, COMMODITY, etc.)')
         parser.add_argument('--limit', type=int, default=0, help='Maximum number of instruments to process (0 = all)')
-        parser.add_argument('--target-days', type=int, default=365, help='Target days of history (default: 365)')
+        parser.add_argument('--target-days', type=int, default=1825, help='Target days of history (default: 1825 / approximately five years)')
 
     def handle(self, *args, **options):
+        limit = options.get('limit', 0)
+        target_days = options.get('target_days', 1825)
+        if limit < 0:
+            raise CommandError('--limit must be zero (all instruments) or a positive integer.')
+        if target_days < 1 or target_days > 36500:
+            raise CommandError('--target-days must be between 1 and 36500.')
+
         self.stdout.write("=" * 65)
         self.stdout.write("Starting Canonical Historical Market Data Backfill Pipeline")
         self.stdout.write("=" * 65)
@@ -29,14 +36,12 @@ class Command(BaseCommand):
             qs = qs.filter(asset_class=options['asset_class'].upper())
 
         total = qs.count()
-        limit = options.get('limit', 0)
         if limit > 0:
             qs = qs[:limit]
             self.stdout.write(f"Processing limited batch of {limit} instruments (out of {total} total)...")
         else:
             self.stdout.write(f"Processing all {total} eligible instruments...")
 
-        target_days = options.get('target_days', 365)
         success_count = 0
         skipped_count = 0
         failed_count = 0

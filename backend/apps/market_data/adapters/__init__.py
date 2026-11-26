@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import List, Optional
+from zoneinfo import ZoneInfo
 
 from apps.market_data.models.coverage import QuotationUnit
 from apps.market_data.models.instrument import AssetClass, Instrument
@@ -46,8 +47,8 @@ class BaseHistoricalAdapter(ABC):
 
 class EquityIndexAdapter(BaseHistoricalAdapter):
     """
-    Acquires daily historical OHLCV data for Indian listed equities,
-    benchmark indices, ETFs, REITs, and InvITs with verifiable provenance.
+    Acquires daily historical OHLCV for supported NSE/BSE listed equities and
+    explicitly mapped benchmark indices, using Yahoo Finance as a permitted secondary feed.
     """
 
     INDEX_TICKER_MAP = {
@@ -79,12 +80,9 @@ class EquityIndexAdapter(BaseHistoricalAdapter):
     }
 
     def supports(self, instrument: Instrument) -> bool:
-        return instrument.asset_class in [
-            AssetClass.EQUITY,
-            AssetClass.INDEX,
-            AssetClass.REAL_ESTATE,
-            AssetClass.FIXED_INCOME,
-        ]
+        # Yahoo chart mapping is only asserted for listed equities and supported indices.
+        # Do not infer that property, bonds or deposits have equivalent market series.
+        return instrument.asset_class in (AssetClass.EQUITY, AssetClass.INDEX)
 
     def _resolve_ticker(self, instrument: Instrument) -> Optional[str]:
         sym = instrument.symbol.upper()
@@ -92,6 +90,8 @@ class EquityIndexAdapter(BaseHistoricalAdapter):
             return self.INDEX_TICKER_MAP.get(sym)
 
         clean_sym = sym.replace('&', '%26')
+        if instrument.exchange not in ('NSE', 'BSE'):
+            return None
         if instrument.exchange == 'BSE':
             return f"{clean_sym}.BO"
         return f"{clean_sym}.NS"
@@ -151,7 +151,8 @@ class EquityIndexAdapter(BaseHistoricalAdapter):
                     continue
 
                 obs_dt = datetime.fromtimestamp(ts, tz=timezone.utc)
-                if obs_dt.date() < start_date or obs_dt.date() > end_date:
+                market_date = obs_dt.astimezone(ZoneInfo('Asia/Kolkata')).date()
+                if market_date < start_date or market_date > end_date:
                     continue
 
                 o_val = opens[idx] if idx < len(opens) and opens[idx] is not None else None
@@ -236,7 +237,7 @@ class MutualFundAdapter(BaseHistoricalAdapter):
                     continue
 
                 # Mid-day NAV publication timestamp
-                eff_dt = datetime(entry_date.year, entry_date.month, entry_date.day, 16, 0, 0, tzinfo=timezone.utc)
+                eff_dt = datetime(entry_date.year, entry_date.month, entry_date.day, 16, 0, 0, tzinfo=ZoneInfo('Asia/Kolkata')).astimezone(timezone.utc)
                 observations.append(
                     NormalizedObservation(
                         instrument_id=str(instrument.id),
@@ -264,21 +265,12 @@ class MutualFundAdapter(BaseHistoricalAdapter):
 
 class CommodityAdapter(BaseHistoricalAdapter):
     """
-    Acquires daily historical rates for Sovereign Gold Bonds (SGBs) traded on exchange.
-    Truthfully returns empty list when physical commodity official feed is unavailable,
-    strictly refusing to fabricate synthetic proxy prices.
+    Placeholder for commodity history. No production commodity feed is currently
+    integrated, so this adapter explicitly advertises no support and returns no data.
     """
 
     def supports(self, instrument: Instrument) -> bool:
         return instrument.asset_class == AssetClass.COMMODITY
 
     def fetch_history(self, instrument: Instrument, start_date: date, end_date: date) -> List[NormalizedObservation]:
-        sym = instrument.symbol.upper()
-        # For Sovereign Gold Bonds, fetch from exchange via EquityIndexAdapter
-        if instrument.product_type == 'SGB' or 'SGB' in sym:
-            eq_adapter = EquityIndexAdapter()
-            return eq_adapter.fetch_history(instrument, start_date, end_date)
-
-        # Do not fabricate or scale gold futures proxies into pseudo-authoritative spot prices.
-        # Truthful missing data is preferred over fabricated financial numbers.
         return []

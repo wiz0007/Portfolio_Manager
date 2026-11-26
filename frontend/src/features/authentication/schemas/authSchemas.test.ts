@@ -18,7 +18,7 @@ describe('authSchemas', () => {
       });
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.errors[0].message).toBe('Please enter a valid email address');
+        expect(result.error.issues[0].message).toBe('Please enter a valid email address');
       }
     });
 
@@ -29,7 +29,7 @@ describe('authSchemas', () => {
       });
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.errors[0].message).toBe('Password is required');
+        expect(result.error.issues[0].message).toBe('Password is required');
       }
     });
   });
@@ -54,7 +54,7 @@ describe('authSchemas', () => {
       });
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.errors[0].message).toBe('Passwords do not match');
+        expect(result.error.issues[0].message).toBe('Passwords do not match');
       }
     });
 
@@ -67,7 +67,7 @@ describe('authSchemas', () => {
       });
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.errors[0].message).toBe('Password must be at least 8 characters');
+        expect(result.error.issues[0].message).toBe('Password must be at least 8 characters');
       }
     });
 
@@ -80,7 +80,7 @@ describe('authSchemas', () => {
       });
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.errors[0].message).toBe('Full name must be at least 2 characters');
+        expect(result.error.issues[0].message).toBe('Full name must be at least 2 characters');
       }
     });
   });

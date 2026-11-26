@@ -1,5 +1,5 @@
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
-from rest_framework import permissions, status, viewsets
+from rest_framework import status, viewsets
 from rest_framework.response import Response
 
 from apps.watchlists.api.v1.serializers import (
@@ -7,6 +7,7 @@ from apps.watchlists.api.v1.serializers import (
     WatchlistItemResponseSerializer,
 )
 from apps.watchlists.services.watchlist_service import WatchlistService
+from core.permissions import IsAuthenticatedAndEmailVerified
 
 
 class WatchlistViewSet(viewsets.ViewSet):
@@ -15,7 +16,7 @@ class WatchlistViewSet(viewsets.ViewSet):
     Guarantees user isolation, uniqueness constraints, and dynamic market data resolution.
     """
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticatedAndEmailVerified]
 
     def list(self, request):
         items = WatchlistService.list_items(request.user)

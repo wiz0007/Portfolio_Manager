@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useMarketHistory, MARKET_HISTORY_QUERY_KEYS } from '../hooks/useMarketHistory';
 import { marketDataApi } from '../api/marketDataApi';
-import { HistoricalPoint } from '../types';
+import { HistoricalPoint, HistoricalSeriesResponse } from '../types';
 
 describe('Market History TanStack Query Caching Architecture', () => {
   let queryClient: QueryClient;
@@ -44,9 +44,30 @@ describe('Market History TanStack Query Caching Architecture', () => {
       is_synthetic: false,
     },
   ];
+  const mockHistory: HistoricalSeriesResponse = {
+    instrument_id: 'inst-infy-1',
+    series_id: '00000000-0000-4000-8000-000000000001',
+    data_version: 3,
+    frequency: 'daily',
+    price_type: 'LTP',
+    currency: 'INR',
+    unit: 'SHARES',
+    start_date: '2026-10-21',
+    end_date: '2026-11-20',
+    last_published_at: '2026-11-20T12:00:00Z',
+    trust_class: 'VERIFIED_PERMITTED_SECONDARY',
+    message: 'ok',
+    points: mockPoints,
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(marketDataApi, 'getSeriesVersion').mockResolvedValue({
+      series_id: '00000000-0000-4000-8000-000000000001',
+      instrument_id: 'inst-infy-1',
+      data_version: 3,
+      last_published_at: '2026-11-20T12:00:00Z',
+    });
     queryClient = new QueryClient({
       defaultOptions: {
         queries: {
@@ -73,7 +94,7 @@ describe('Market History TanStack Query Caching Architecture', () => {
   });
 
   it('fetches historical series on first mount and caches with 1h staleTime and 24h gcTime', async () => {
-    const getHistorySpy = vi.spyOn(marketDataApi, 'getHistory').mockResolvedValue(mockPoints);
+    const getHistorySpy = vi.spyOn(marketDataApi, 'getHistory').mockResolvedValue(mockHistory);
 
     const { result } = renderHook(
       () =>
@@ -86,7 +107,7 @@ describe('Market History TanStack Query Caching Architecture', () => {
     );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toEqual(mockPoints);
+    expect(result.current.data).toEqual(mockHistory);
     expect(getHistorySpy).toHaveBeenCalledTimes(1);
 
     // Verify query cache entry options
@@ -101,7 +122,7 @@ describe('Market History TanStack Query Caching Architecture', () => {
   });
 
   it('serves subsequent requests from cache without issuing redundant network calls while data is fresh', async () => {
-    const getHistorySpy = vi.spyOn(marketDataApi, 'getHistory').mockResolvedValue(mockPoints);
+    const getHistorySpy = vi.spyOn(marketDataApi, 'getHistory').mockResolvedValue(mockHistory);
 
     // First render
     const { result, unmount } = renderHook(
@@ -130,12 +151,12 @@ describe('Market History TanStack Query Caching Architecture', () => {
     );
 
     // Should immediately have data and NOT call the API again
-    expect(cachedResult.current.data).toEqual(mockPoints);
+    expect(cachedResult.current.data).toEqual(mockHistory);
     expect(getHistorySpy).toHaveBeenCalledTimes(1);
   });
 
   it('preserves valid cached historical data if a background refetch fails', async () => {
-    const getHistorySpy = vi.spyOn(marketDataApi, 'getHistory').mockResolvedValue(mockPoints);
+    const getHistorySpy = vi.spyOn(marketDataApi, 'getHistory').mockResolvedValue(mockHistory);
 
     const { result, rerender } = renderHook(
       () =>
@@ -148,7 +169,7 @@ describe('Market History TanStack Query Caching Architecture', () => {
     );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toEqual(mockPoints);
+    expect(result.current.data).toEqual(mockHistory);
 
     // Now mock network error on next fetch
     getHistorySpy.mockRejectedValueOnce(new Error('Network connection timeout'));
@@ -161,6 +182,6 @@ describe('Market History TanStack Query Caching Architecture', () => {
     rerender();
 
     // The query should still retain the previous cached data rather than wiping the chart
-    expect(result.current.data).toEqual(mockPoints);
+    expect(result.current.data).toEqual(mockHistory);
   });
 });

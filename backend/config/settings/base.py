@@ -164,7 +164,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
+        'core.permissions.IsAuthenticatedAndEmailVerified',
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'core.authentication.EnforcedSessionAuthentication',
@@ -224,6 +224,9 @@ EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 't')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@portfoliomanager.local')
 FRONTEND_BASE_URL = os.getenv('FRONTEND_BASE_URL', 'http://localhost:5173')
 EMAIL_VERIFICATION_TIMEOUT = int(os.getenv('EMAIL_VERIFICATION_TIMEOUT', '1800'))
+
+# Email verification policy (production overrides to True).
+REQUIRE_VERIFIED_EMAIL_FOR_API = os.getenv('REQUIRE_VERIFIED_EMAIL_FOR_API', 'False').lower() in ('true', '1', 't')
 
 # Market Data Configuration (Sprint 3)
 MARKET_DATA_PROVIDER_MODE = os.getenv('MARKET_DATA_PROVIDER_MODE', 'DEMO')  # 'DEMO' or 'PRODUCTION'

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { investmentApi } from '../api/investmentApi';
+import { useInvalidateDashboard } from '@/features/dashboard/hooks/useDashboard';
 import {
   CreateInvestmentPayload,
   InvestmentDetailItem,
@@ -27,6 +28,7 @@ export function useInvestment(portfolioId: string, id: string) {
 
 export function useCreateInvestment() {
   const queryClient = useQueryClient();
+  const invalidateDashboard = useInvalidateDashboard();
 
   return useMutation({
     mutationFn: (payload: CreateInvestmentPayload) => investmentApi.createInvestment(payload),
@@ -37,7 +39,7 @@ export function useCreateInvestment() {
           queryKey: [...INVESTMENTS_QUERY_KEY, { portfolioId: variables.portfolio }],
         });
       }
-      queryClient.invalidateQueries({ queryKey: ['dashboardOverview'] });
+      invalidateDashboard();
       queryClient.invalidateQueries({ queryKey: ['portfolios'] });
     },
   });
@@ -45,6 +47,7 @@ export function useCreateInvestment() {
 
 export function useUpdateInvestment(portfolioId: string) {
   const queryClient = useQueryClient();
+  const invalidateDashboard = useInvalidateDashboard();
 
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: UpdateInvestmentPayload }) =>
@@ -54,7 +57,7 @@ export function useUpdateInvestment(portfolioId: string) {
       queryClient.invalidateQueries({
         queryKey: [...INVESTMENTS_QUERY_KEY, portfolioId, variables.id],
       });
-      queryClient.invalidateQueries({ queryKey: ['dashboardOverview'] });
+      invalidateDashboard();
       queryClient.invalidateQueries({ queryKey: ['portfolios'] });
     },
   });
@@ -62,6 +65,7 @@ export function useUpdateInvestment(portfolioId: string) {
 
 export function useDeleteInvestment(portfolioId: string) {
   const queryClient = useQueryClient();
+  const invalidateDashboard = useInvalidateDashboard();
 
   return useMutation({
     mutationFn: (id: string) => investmentApi.deleteInvestment(portfolioId, id),
@@ -70,7 +74,7 @@ export function useDeleteInvestment(portfolioId: string) {
       queryClient.invalidateQueries({
         queryKey: [...INVESTMENTS_QUERY_KEY, { portfolioId }],
       });
-      queryClient.invalidateQueries({ queryKey: ['dashboardOverview'] });
+      invalidateDashboard();
       queryClient.invalidateQueries({ queryKey: ['portfolios'] });
     },
   });

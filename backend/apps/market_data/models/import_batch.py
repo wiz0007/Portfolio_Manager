@@ -21,7 +21,6 @@ class PriceImportBatch(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user_id = models.UUIDField(
         db_index=True,
-        default=uuid.uuid4,
         help_text="Uploader User UUID (Primary DB)",
     )
     filename = models.CharField(max_length=255)

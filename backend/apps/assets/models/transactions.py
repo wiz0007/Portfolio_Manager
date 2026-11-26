@@ -17,19 +17,19 @@ class InvestmentTransaction(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     investment = models.ForeignKey(
         Investment,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='transactions',
         db_index=True,
     )
     portfolio = models.ForeignKey(
         Portfolio,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='investment_transactions',
         db_index=True,
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='investment_transactions',
         db_index=True,
     )
@@ -76,6 +76,34 @@ class InvestmentTransaction(models.Model):
             models.Index(fields=['portfolio', '-transaction_date'], name='inv_tx_port_date_idx'),
         ]
 
+    def clean(self):
+        from decimal import Decimal
+
+        from django.core.exceptions import ValidationError
+
+        super().clean()
+        errors = {}
+        if self.investment_id and self.portfolio_id and self.investment.portfolio_id != self.portfolio_id:
+            errors['portfolio'] = 'Transaction portfolio must match the investment portfolio.'
+        if self.investment_id and self.user_id and self.investment.user_id != self.user_id:
+            errors['user'] = 'Transaction owner must match the investment owner.'
+        if self.portfolio_id and self.user_id and self.portfolio.user_id != self.user_id:
+            errors['portfolio'] = 'Transaction portfolio must belong to the transaction owner.'
+        if self.amount is not None and self.amount < Decimal('0'):
+            errors['amount'] = 'Transaction amount cannot be negative.'
+        if self.gross_amount is not None and self.gross_amount < Decimal('0'):
+            errors['gross_amount'] = 'Gross amount cannot be negative.'
+        if self.fees is not None and self.fees < Decimal('0'):
+            errors['fees'] = 'Fees cannot be negative.'
+        if self.taxes is not None and self.taxes < Decimal('0'):
+            errors['taxes'] = 'Taxes cannot be negative.'
+        if self.units is not None and self.units < Decimal('0'):
+            errors['units'] = 'Units cannot be negative.'
+        if self.price_per_unit is not None and self.price_per_unit < Decimal('0'):
+            errors['price_per_unit'] = 'Price per unit cannot be negative.'
+        if errors:
+            raise ValidationError(errors)
+
     def save(self, *args, **kwargs):
         from decimal import Decimal
 
@@ -98,6 +126,14 @@ class InvestmentTransaction(models.Model):
                 self.net_cash_flow = gross - f - t
             else:
                 self.net_cash_flow = gross
+
+        FOUR_PLACES = Decimal('0.0001')
+        for field in ('amount', 'gross_amount', 'net_cash_flow', 'fees', 'taxes', 'units', 'price_per_unit'):
+            val = getattr(self, field, None)
+            if val is not None and isinstance(val, Decimal):
+                setattr(self, field, val.quantize(FOUR_PLACES))
+
+        self.full_clean()
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):

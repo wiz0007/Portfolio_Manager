@@ -5,6 +5,7 @@ import { Calculator } from 'lucide-react';
 import {
   recurringDepositSchema,
   RecurringDepositFormData,
+  RecurringDepositInput,
 } from '../../schemas/investmentSchemas';
 import {
   FormField,
@@ -55,7 +56,7 @@ export const RecurringDepositForm: React.FC<RecurringDepositFormProps> = ({
     control,
     watch,
     formState: { errors },
-  } = useForm<RecurringDepositFormData>({
+  } = useForm<RecurringDepositInput, any, RecurringDepositFormData>({
     resolver: zodResolver(recurringDepositSchema),
     defaultValues: {
       portfolio_id: portfolioId,

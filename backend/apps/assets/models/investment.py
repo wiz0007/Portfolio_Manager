@@ -39,7 +39,7 @@ class Investment(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     portfolio = models.ForeignKey(
         Portfolio,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='investments',
         db_index=True,
     )

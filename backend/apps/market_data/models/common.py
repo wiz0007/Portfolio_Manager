@@ -71,6 +71,33 @@ class CrossDbQuerySet(models.QuerySet):
                 new_kwargs[k] = v
         return new_kwargs
 
+    def delete(self):
+        if self.model.__name__ == 'PriceObservation':
+            from django.core.exceptions import ValidationError
+
+            from apps.market_data.models.observation import ObservationStatus
+            if self.filter(status=ObservationStatus.PUBLISHED).exists():
+                raise ValidationError('Published observations cannot be deleted with QuerySet.delete().')
+        return super().delete()
+
+    def bulk_create(self, objs, **kwargs):
+        if self.model.__name__ == 'PriceObservation':
+            from django.core.exceptions import ValidationError
+            raise ValidationError('PriceObservation bulk_create is disabled; use the validated lifecycle service.')
+        return super().bulk_create(objs, **kwargs)
+
+    def bulk_update(self, objs, fields, **kwargs):
+        if self.model.__name__ == 'PriceObservation':
+            from django.core.exceptions import ValidationError
+            raise ValidationError('bulk_update() is disabled for PriceObservation; use validated lifecycle methods.')
+        return super().bulk_update(objs, fields, **kwargs)
+
+    def update(self, **kwargs):
+        if self.model.__name__ == 'PriceObservation':
+            from django.core.exceptions import ValidationError
+            raise ValidationError('QuerySet.update() is disabled for PriceObservation; use validated lifecycle methods.')
+        return super().update(**kwargs)
+
     def filter(self, *args, **kwargs):
         new_args = [self._transform_q(a) for a in args]
         return super().filter(*new_args, **self._transform_kwargs(kwargs))

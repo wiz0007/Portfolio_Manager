@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import DecimalField, ExpressionWrapper, F
@@ -39,6 +40,80 @@ class DashboardService:
             raise ObjectDoesNotExist(f"Portfolio with id {portfolio_id} not found for this user.")
 
     @classmethod
+    def classify_holding_quality(
+        cls,
+        inv: Investment,
+        res: Optional[Any],
+    ) -> tuple[str, str]:
+        """
+        Authoritative shared classification rule for both overview completeness and data-quality inspection.
+        Returns (category, reason) where category is one of:
+          - 'valued'
+          - 'stale'
+          - 'missing_price'
+          - 'awaiting_verification'
+          - 'unsupported'
+        """
+        if inv.instrument:
+            inst = inv.instrument
+            if not inst.is_active or inst.status in ('SUSPENDED', 'DELISTED', 'INACTIVE'):
+                return (
+                    'unsupported',
+                    f"Instrument {inst.symbol} status is {inst.status} and not active for trading.",
+                )
+
+            if not res or res.status == 'MISSING':
+                return (
+                    'missing_price',
+                    f"No published market price found for {inst.symbol}.",
+                )
+
+            if res.status == 'AVAILABLE':
+                return ('valued', '')
+
+            if res.status == 'STALE':
+                eff_str = res.effective_at.astimezone(ZoneInfo('Asia/Kolkata')).date() if res.effective_at else 'unknown'
+                return (
+                    'stale',
+                    f"Market price for {inst.symbol} is stale (effective {eff_str}).",
+                )
+
+            if res.status in ('AWAITING_VERIFICATION', 'UNVERIFIED'):
+                return (
+                    'awaiting_verification',
+                    "Instrument price is awaiting verification.",
+                )
+
+            if res.status in ('SYNTHETIC', 'INCOMPATIBLE'):
+                return (
+                    'unsupported',
+                    f"Market observation is not eligible for valuation ({res.status}).",
+                )
+
+            if res.status == 'CONFLICTED':
+                return (
+                    'unsupported',
+                    f"Market price discrepancy detected between sources ({res.status}).",
+                )
+
+            return ('unsupported', f"Price status is {res.status}.")
+        else:
+            # Non-instrument holdings (Bank deposit, cash, real estate, etc.)
+            has_snapshot = bool(inv.valuations.all())
+            if to_decimal(inv.current_value) > Decimal('0') or has_snapshot:
+                return ('valued', '')
+            elif to_decimal(inv.initial_value) > Decimal('0'):
+                return (
+                    'missing_price',
+                    "Holding has acquisition cost but no valuation has been recorded.",
+                )
+            else:
+                return (
+                    'unsupported',
+                    "Holding has zero valuation and zero cost basis.",
+                )
+
+    @classmethod
     def get_user_dashboard_overview(
         cls,
         user: User,
@@ -66,7 +141,9 @@ class DashboardService:
 
         # Scope investments
         inv_qs = Investment.objects.filter(user=user, is_active=True).select_related(
-            'portfolio', 'instrument', 'instrument__reference_data'
+            'portfolio', 'instrument', 'instrument__reference_data',
+            'equity_detail', 'mutual_fund_detail', 'bond_detail', 'deposit_detail',
+            'real_estate_detail', 'gold_detail', 'crypto_detail', 'cash_detail',
         ).prefetch_related('valuations')
 
         if selected_portfolio:
@@ -134,17 +211,23 @@ class DashboardService:
 
         stale_count = 0
         missing_count = 0
+        awaiting_verification_count = 0
+        unsupported_count = 0
+
         instruments = [inv.instrument for inv in investments if inv.instrument]
         price_map = PriceResolver.resolve_prices_bulk(instruments)
 
         for inv in investments:
-            if inv.instrument:
-                res = price_map.get(inv.instrument.id)
-                if res:
-                    if res.status == 'STALE':
-                        stale_count += 1
-                    elif res.status in ('MISSING', 'UNSUPPORTED'):
-                        missing_count += 1
+            res = price_map.get(inv.instrument.id) if inv.instrument else None
+            cat, _ = cls.classify_holding_quality(inv, res)
+            if cat == 'stale':
+                stale_count += 1
+            elif cat == 'missing_price':
+                missing_count += 1
+            elif cat == 'awaiting_verification':
+                awaiting_verification_count += 1
+            elif cat == 'unsupported':
+                unsupported_count += 1
 
         completeness_pct = 100.0
         if active_investment_count > 0:
@@ -156,6 +239,8 @@ class DashboardService:
             'unvalued_holdings': total_unvalued,
             'stale_holdings': stale_count,
             'missing_price_holdings': missing_count,
+            'awaiting_verification_holdings': awaiting_verification_count,
+            'unsupported_holdings': unsupported_count,
             'completeness_percentage': completeness_pct,
         }
 
@@ -360,7 +445,9 @@ class DashboardService:
         """
         selected_portfolio = cls.resolve_portfolio_scope(user, portfolio_id)
         inv_qs = Investment.objects.filter(user=user).select_related(
-            'portfolio', 'instrument', 'instrument__reference_data'
+            'portfolio', 'instrument', 'instrument__reference_data',
+            'equity_detail', 'mutual_fund_detail', 'bond_detail', 'deposit_detail',
+            'real_estate_detail', 'gold_detail', 'crypto_detail', 'cash_detail',
         ).prefetch_related('valuations')
 
         if selected_portfolio:
@@ -415,14 +502,23 @@ class DashboardService:
             val_source = latest_val.source if latest_val else None
             val_status = 'VALUED' if latest_val else 'MISSING'
 
-            # Price freshness & provenance
+            # Price freshness, timestamps & provenance
             freshness = 'MANUAL'
             is_stale = False
+            price_effective_at = None
+            price_published_at = None
+            price_age_seconds = None
+
             if inv.instrument:
                 res = price_map.get(inv.instrument.id)
                 if res:
                     freshness = res.status
                     is_stale = res.status == 'STALE'
+                    if res.effective_at:
+                        price_effective_at = res.effective_at.isoformat()
+                    if res.published_at:
+                        price_published_at = res.published_at.isoformat()
+                    price_age_seconds = res.age_seconds
                 else:
                     freshness = 'MISSING'
 
@@ -449,6 +545,9 @@ class DashboardService:
                 'valuation_status': val_status,
                 'price_freshness': freshness,
                 'is_stale': is_stale,
+                'price_effective_at': price_effective_at,
+                'price_published_at': price_published_at,
+                'price_age_seconds': price_age_seconds,
             })
 
         paged_results = annotated
@@ -546,57 +645,19 @@ class DashboardService:
                 'currency': inv.currency,
                 'current_value': str(quantize_currency(inv.current_value)),
             }
+            res = price_map.get(inv.instrument.id) if inv.instrument else None
+            cat, reason = cls.classify_holding_quality(inv, res)
 
-            if inv.instrument:
-                inst = inv.instrument
-                # Check instrument verification status
-                if inst.status in ('PENDING_REVIEW', 'DRAFT', 'REJECTED'):
-                    unverified_list.append({
-                        **holding_info,
-                        'reason': f"Instrument {inst.symbol} is awaiting canonical verification ({inst.status}).",
-                    })
-                    continue
-
-                res = price_map.get(inst.id)
-                if not res or res.status == 'MISSING':
-                    missing_list.append({
-                        **holding_info,
-                        'reason': f"No published market price found for {inst.symbol}.",
-                    })
-                elif res.status == 'AVAILABLE':
-                    valued_list.append(holding_info)
-                elif res.status == 'STALE':
-                    stale_list.append({
-                        **holding_info,
-                        'reason': f"Market price for {inst.symbol} is stale (effective {res.effective_at.date() if res.effective_at else 'unknown'}).",
-                    })
-                elif res.status == 'SYNTHETIC':
-                    valued_list.append(holding_info)
-                elif res.status == 'AWAITING_VERIFICATION':
-                    unverified_list.append({
-                        **holding_info,
-                        'reason': "Instrument price is awaiting verification.",
-                    })
-                else:
-                    unsupported_list.append({
-                        **holding_info,
-                        'reason': f"Price status is {res.status}.",
-                    })
-            else:
-                # Non-instrument holdings (Bank deposit, cash, real estate, etc.)
-                has_snapshot = bool(inv.valuations.all())
-                if to_decimal(inv.current_value) > Decimal('0') or has_snapshot:
-                    valued_list.append(holding_info)
-                elif to_decimal(inv.initial_value) > Decimal('0'):
-                    missing_list.append({
-                        **holding_info,
-                        'reason': "Holding has acquisition cost but no valuation has been recorded.",
-                    })
-                else:
-                    unsupported_list.append({
-                        **holding_info,
-                        'reason': "Holding has zero valuation and zero cost basis.",
-                    })
+            if cat == 'valued':
+                valued_list.append(holding_info)
+            elif cat == 'stale':
+                stale_list.append({**holding_info, 'reason': reason})
+            elif cat == 'missing_price':
+                missing_list.append({**holding_info, 'reason': reason})
+            elif cat == 'awaiting_verification':
+                unverified_list.append({**holding_info, 'reason': reason})
+            elif cat == 'unsupported':
+                unsupported_list.append({**holding_info, 'reason': reason})
 
         total_active = len(investments)
         if total_active == 0:
