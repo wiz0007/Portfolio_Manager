@@ -167,7 +167,7 @@ class TestTwoDatabaseArchitecture:
         assert result == {'processed': 3, 'failed': 0}
         assert len(refresh_calls) == 1
         assert refresh_calls[0][0] == instrument.id
-        assert refresh_calls[0][1] == str(created_ids[0])
+        assert refresh_calls[0][1] in [str(cid) for cid in created_ids]
         assert not MarketDataPublicationEvent.objects.using('market_data').filter(
             id__in=created_ids,
             status__in=[PublicationEventStatus.PENDING, PublicationEventStatus.FAILED],

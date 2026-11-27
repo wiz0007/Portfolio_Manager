@@ -26,7 +26,7 @@ export const MarketOverviewPage: React.FC = () => {
   const [selectedInstrument, setSelectedInstrument] = useState<Instrument | null>(null);
   const [selectedRange, setSelectedRange] = useState<string>('1M');
   const [isLoadingOverview, setIsLoadingOverview] = useState(true);
-  const [activeTab, setActiveTab] = useState<'EQUITY' | 'MUTUAL_FUND'>('EQUITY');
+  const [activeTab, setActiveTab] = useState<'EQUITY' | 'MUTUAL_FUND' | 'CRYPTO'>('EQUITY');
 
   // TanStack Query caching for historical timeseries chart (1h staleTime, 24h gcTime)
   const { data: historyResponse, isLoading: isLoadingHistory } = useMarketHistory({
@@ -222,17 +222,78 @@ export const MarketOverviewPage: React.FC = () => {
             >
               Mutual Funds
             </button>
+            <button
+              onClick={() => setActiveTab('CRYPTO')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${
+                activeTab === 'CRYPTO'
+                  ? 'bg-theme-primary text-theme-text-inverse'
+                  : 'text-theme-text-muted hover:text-theme-text'
+              }`}
+            >
+              Cryptocurrencies
+            </button>
           </div>
 
           <div className="space-y-3">
-            {activeTab === 'EQUITY'
-              ? overview?.equities.map((item) => {
+            {activeTab === 'EQUITY' &&
+              overview?.equities.map((item) => {
+                const quote: MarketQuote = {
+                  symbol: item.symbol,
+                  price: item.price,
+                  change_amount: item.change_amount,
+                  change_percent: item.change_percent,
+                  provider: 'DEMO',
+                  is_synthetic: item.is_synthetic,
+                  currency: 'INR',
+                  timestamp: item.timestamp,
+                };
+                return (
+                  <QuoteCard
+                    key={item.id}
+                    symbol={item.symbol}
+                    name={item.name}
+                    exchange={item.exchange}
+                    quote={quote}
+                    onSelect={() => handleSelectOverviewItem(item.id)}
+                    className={selectedInstrument?.id === item.id ? 'ring-2 ring-theme-primary border-transparent' : ''}
+                  />
+                );
+              })}
+
+            {activeTab === 'MUTUAL_FUND' &&
+              overview?.mutual_funds.map((item) => {
+                const quote: MarketQuote = {
+                  symbol: item.symbol,
+                  price: item.price,
+                  change_amount: item.change_amount,
+                  change_percent: item.change_percent,
+                  provider: 'MFAPI',
+                  is_synthetic: item.is_synthetic,
+                  currency: 'INR',
+                  timestamp: item.timestamp,
+                };
+                return (
+                  <QuoteCard
+                    key={item.id}
+                    symbol={item.symbol}
+                    name={item.name}
+                    exchange="AMFI"
+                    quote={quote}
+                    onSelect={() => handleSelectOverviewItem(item.id)}
+                    className={selectedInstrument?.id === item.id ? 'ring-2 ring-theme-primary border-transparent' : ''}
+                  />
+                );
+              })}
+
+            {activeTab === 'CRYPTO' &&
+              (overview?.cryptocurrencies && overview.cryptocurrencies.length > 0 ? (
+                overview.cryptocurrencies.map((item) => {
                   const quote: MarketQuote = {
                     symbol: item.symbol,
                     price: item.price,
                     change_amount: item.change_amount,
                     change_percent: item.change_percent,
-                    provider: 'DEMO',
+                    provider: 'COINGECKO',
                     is_synthetic: item.is_synthetic,
                     currency: 'INR',
                     timestamp: item.timestamp,
@@ -242,36 +303,18 @@ export const MarketOverviewPage: React.FC = () => {
                       key={item.id}
                       symbol={item.symbol}
                       name={item.name}
-                      exchange={item.exchange}
+                      exchange="CRYPTO"
                       quote={quote}
                       onSelect={() => handleSelectOverviewItem(item.id)}
                       className={selectedInstrument?.id === item.id ? 'ring-2 ring-theme-primary border-transparent' : ''}
                     />
                   );
                 })
-              : overview?.mutual_funds.map((item) => {
-                  const quote: MarketQuote = {
-                    symbol: item.symbol,
-                    price: item.price,
-                    change_amount: item.change_amount,
-                    change_percent: item.change_percent,
-                    provider: 'AMFI',
-                    is_synthetic: item.is_synthetic,
-                    currency: 'INR',
-                    timestamp: item.timestamp,
-                  };
-                  return (
-                    <QuoteCard
-                      key={item.id}
-                      symbol={item.symbol}
-                      name={item.name}
-                      exchange="AMFI"
-                      quote={quote}
-                      onSelect={() => handleSelectOverviewItem(item.id)}
-                      className={selectedInstrument?.id === item.id ? 'ring-2 ring-theme-primary border-transparent' : ''}
-                    />
-                  );
-                })}
+              ) : (
+                <div className="p-4 text-xs text-theme-text-muted text-center border border-dashed border-theme-border rounded-xl">
+                  No cryptocurrency instruments loaded.
+                </div>
+              ))}
           </div>
         </div>
 
@@ -327,12 +370,16 @@ export const MarketOverviewPage: React.FC = () => {
                           ? 'mutual_funds'
                           : selectedInstrument.asset_class === 'COMMODITY'
                           ? 'gold'
+                          : selectedInstrument.asset_class === 'CRYPTO'
+                          ? 'crypto'
                           : 'equity';
                       const type =
                         selectedInstrument.asset_class === 'MUTUAL_FUND'
                           ? 'mutual_fund'
                           : selectedInstrument.asset_class === 'COMMODITY'
                           ? 'physical_gold'
+                          : selectedInstrument.asset_class === 'CRYPTO'
+                          ? 'crypto'
                           : 'listed_stock';
                       const query = new URLSearchParams({
                         category,
@@ -357,8 +404,10 @@ export const MarketOverviewPage: React.FC = () => {
                     <span className="font-semibold text-theme-text">{selectedInstrument.asset_class}</span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-theme-bg/60 border border-theme-border/40">
-                    <span className="text-theme-text-muted block">ISIN</span>
-                    <span className="font-semibold text-theme-text">{selectedInstrument.isin || 'N/A'}</span>
+                    <span className="text-theme-text-muted block">ISIN / Scheme Code</span>
+                    <span className="font-semibold text-theme-text">
+                      {selectedInstrument.isin || selectedInstrument.scheme_code || 'N/A'}
+                    </span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-theme-bg/60 border border-theme-border/40">
                     <span className="text-theme-text-muted block">Market Cap Tier</span>

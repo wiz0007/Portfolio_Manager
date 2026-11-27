@@ -314,7 +314,7 @@ class PriceObservation(models.Model):
                 src = (self.source or '').upper()
                 if any(k in src for k in ('OFFICIAL', 'NSE', 'BSE', 'AMFI', 'IBJA', 'GOLD', 'MCX', 'RBI')):
                     self.trust_class = TrustClass.VERIFIED_OFFICIAL
-                elif any(k in src for k in ('YAHOO', 'MFAPI', 'FEED', 'SECONDARY', 'HISTORICAL')):
+                elif any(k in src for k in ('YAHOO', 'MFAPI', 'FEED', 'SECONDARY', 'HISTORICAL', 'COINGECKO')):
                     self.trust_class = TrustClass.VERIFIED_PERMITTED_SECONDARY
                 elif any(k in src for k in ('MANUAL', 'CSV')):
                     self.trust_class = TrustClass.MANUAL_VERIFIED
@@ -416,7 +416,7 @@ class PriceObservation(models.Model):
                 src = (locked_observation.source or '').upper()
                 if any(k in src for k in ('OFFICIAL', 'NSE', 'BSE', 'AMFI', 'IBJA', 'GOLD', 'MCX', 'RBI')):
                     locked_observation.trust_class = TrustClass.VERIFIED_OFFICIAL
-                elif any(k in src for k in ('YAHOO', 'MFAPI', 'FEED', 'SECONDARY', 'HISTORICAL')):
+                elif any(k in src for k in ('YAHOO', 'MFAPI', 'FEED', 'SECONDARY', 'HISTORICAL', 'COINGECKO')):
                     locked_observation.trust_class = TrustClass.VERIFIED_PERMITTED_SECONDARY
                 elif any(k in src for k in ('MANUAL', 'CSV')):
                     locked_observation.trust_class = TrustClass.MANUAL_VERIFIED

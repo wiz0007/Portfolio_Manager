@@ -13,6 +13,15 @@ export const marketDataApi = {
     return apiClient.get<Instrument[]>(`/instruments/search/?q=${encodeURIComponent(query)}`);
   },
 
+  searchMutualFunds: (params: { q?: string; plan_type?: string; option_type?: string }): Promise<Instrument[]> => {
+    const query = new URLSearchParams();
+    if (params.q) query.append('q', params.q);
+    if (params.plan_type) query.append('plan_type', params.plan_type);
+    if (params.option_type) query.append('option_type', params.option_type);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    return apiClient.get<Instrument[]>(`/instruments/mutual-funds/search/${qs}`);
+  },
+
   getInstruments: (params?: { asset_class?: string; search?: string }): Promise<{ results: Instrument[] } | Instrument[]> => {
     const query = new URLSearchParams();
     if (params?.asset_class) query.append('asset_class', params.asset_class);

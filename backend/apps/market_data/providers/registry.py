@@ -8,7 +8,9 @@ from apps.market_data.providers.base import (
     BaseMarketDataProvider,
     ProviderHealth,
 )
+from apps.market_data.providers.coingecko import CoinGeckoMarketDataProvider
 from apps.market_data.providers.demo_provider import DemoMarketDataProvider
+from apps.market_data.providers.mfapi import MFAPIMarketDataProvider
 from apps.market_data.providers.truedata_provider import TrueDataMarketDataProvider
 
 logger = logging.getLogger(__name__)
@@ -32,10 +34,14 @@ class MarketDataProviderRegistry:
     def _initialize_defaults(self):
         demo = DemoMarketDataProvider()
         amfi = AMFIMarketDataProvider()
+        mfapi = MFAPIMarketDataProvider()
+        coingecko = CoinGeckoMarketDataProvider()
         truedata = TrueDataMarketDataProvider()
 
         self.register(demo)
         self.register(amfi)
+        self.register(mfapi)
+        self.register(coingecko)
         self.register(truedata)
 
     def register(self, provider: BaseMarketDataProvider):
@@ -53,7 +59,9 @@ class MarketDataProviderRegistry:
 
         asset_class = getattr(instrument, 'asset_class', 'EQUITY')
         if asset_class == 'MUTUAL_FUND':
-            provider = self._providers.get('AMFI')
+            provider = self._providers.get('MFAPI') or self._providers.get('AMFI')
+        elif asset_class == 'CRYPTO':
+            provider = self._providers.get('COINGECKO')
         elif asset_class in ('EQUITY', 'INDEX', 'COMMODITY'):
             provider = self._providers.get('TRUEDATA')
         else:

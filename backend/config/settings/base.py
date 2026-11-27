@@ -228,10 +228,28 @@ EMAIL_VERIFICATION_TIMEOUT = int(os.getenv('EMAIL_VERIFICATION_TIMEOUT', '1800')
 # Email verification policy (production overrides to True).
 REQUIRE_VERIFIED_EMAIL_FOR_API = os.getenv('REQUIRE_VERIFIED_EMAIL_FOR_API', 'False').lower() in ('true', '1', 't')
 
-# Market Data Configuration (Sprint 3)
+# Market Data Configuration (Sprint 3 & Sprint 7)
 MARKET_DATA_PROVIDER_MODE = os.getenv('MARKET_DATA_PROVIDER_MODE', 'DEMO')  # 'DEMO' or 'PRODUCTION'
 TRUEDATA_API_KEY = os.getenv('TRUEDATA_API_KEY', '')
 TRUEDATA_USERNAME = os.getenv('TRUEDATA_USERNAME', '')
 MARKET_DATA_CACHE_TIMEOUT = int(os.getenv('MARKET_DATA_CACHE_TIMEOUT', '900'))  # 15 mins default
+
+# CoinGecko cryptocurrency provider
+COINGECKO_API_KEY = os.getenv('COINGECKO_API_KEY', '')
+COINGECKO_BASE_URL = os.getenv('COINGECKO_BASE_URL', 'https://api.coingecko.com/api/v3').rstrip('/')
+COINGECKO_ENABLED = os.getenv('COINGECKO_ENABLED', 'True').lower() in ('true', '1', 't')
+COINGECKO_REQUEST_TIMEOUT = int(os.getenv('COINGECKO_REQUEST_TIMEOUT', '20'))
+COINGECKO_PRICE_SYNC_INTERVAL_MINUTES = int(os.getenv('COINGECKO_PRICE_SYNC_INTERVAL_MINUTES', '15'))
+COINGECKO_HISTORY_SYNC_ENABLED = os.getenv('COINGECKO_HISTORY_SYNC_ENABLED', 'True').lower() in ('true', '1', 't')
+COINGECKO_QUOTE_CURRENCY = os.getenv('COINGECKO_QUOTE_CURRENCY', 'INR').upper()
+
+# MFAPI / Indian mutual funds provider
+MFAPI_BASE_URL = os.getenv('MFAPI_BASE_URL', 'https://api.mfapi.in').rstrip('/')
+MFAPI_ENABLED = os.getenv('MFAPI_ENABLED', 'True').lower() in ('true', '1', 't')
+MFAPI_REQUEST_TIMEOUT = int(os.getenv('MFAPI_REQUEST_TIMEOUT', '20'))
+MF_NAV_SYNC_ENABLED = os.getenv('MF_NAV_SYNC_ENABLED', 'True').lower() in ('true', '1', 't')
+MF_NAV_SYNC_INTERVAL_HOURS = int(os.getenv('MF_NAV_SYNC_INTERVAL_HOURS', '24'))
+MF_NAV_DEFAULT_CURRENCY = os.getenv('MF_NAV_DEFAULT_CURRENCY', 'INR').upper()
+
 
 
