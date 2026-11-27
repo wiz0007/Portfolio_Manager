@@ -100,6 +100,44 @@ class InstrumentViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(instruments, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'], url_path='mutual-funds/search')
+    def mutual_funds_search(self, request):
+        """Search Indian mutual fund schemes with classification filters."""
+        query = request.query_params.get('q', request.query_params.get('search', '')).strip()
+        plan_type = request.query_params.get('plan_type')
+        option_type = request.query_params.get('option_type')
+        limit = min(int(request.query_params.get('limit', 50)), 100)
+
+        qs = Instrument.objects.filter(
+            asset_class='MUTUAL_FUND',
+            is_active=True,
+        )
+        if query:
+            qs = qs.filter(
+                Q(symbol__icontains=query)
+                | Q(name__icontains=query)
+                | Q(scheme_code__icontains=query)
+                | Q(isin__icontains=query)
+            )
+        if plan_type:
+            if plan_type.upper() == 'DIRECT':
+                qs = qs.filter(name__icontains='Direct')
+            elif plan_type.upper() == 'REGULAR':
+                qs = qs.exclude(name__icontains='Direct')
+        if option_type:
+            if option_type.upper() == 'GROWTH':
+                qs = qs.filter(name__icontains='Growth')
+            elif option_type.upper() == 'IDCW':
+                qs = qs.filter(Q(name__icontains='IDCW') | Q(name__icontains='Dividend') | Q(name__icontains='Income'))
+
+        instruments = list(qs[:limit])
+        resolved_prices = PriceResolver.resolve_prices_bulk(instruments)
+        serializer = self.get_serializer(
+            instruments, many=True,
+            context={**self.get_serializer_context(), 'resolved_prices': resolved_prices},
+        )
+        return Response(serializer.data)
+
     @action(detail=True, methods=['get'], url_path='market-data/latest')
     def market_data_latest(self, request, pk=None):
         """Retrieve authoritative resolved latest price and movement."""

@@ -101,12 +101,20 @@ export interface MarketOverviewItem {
   change_percent: string;
   is_synthetic: boolean;
   timestamp: string;
+  market_cap?: string | null;
+  volume_24h?: string | null;
+  fund_house?: string | null;
+  scheme_code?: string | null;
+  isin?: string | null;
+  plan_type?: string | null;
+  option_type?: string | null;
 }
 
 export interface MarketOverviewData {
   indices: MarketOverviewItem[];
   equities: MarketOverviewItem[];
   mutual_funds: MarketOverviewItem[];
+  cryptocurrencies?: MarketOverviewItem[];
   is_demo_mode: boolean;
   demo_notice: string;
 }

@@ -149,15 +149,27 @@ class MarketDataService:
     def get_market_overview(cls) -> Dict[str, Any]:
         indices = list(Instrument.objects.filter(asset_class='INDEX', is_active=True)[:5])
         equities = list(Instrument.objects.filter(asset_class='EQUITY', is_active=True)[:8])
-        mutual_funds = list(Instrument.objects.filter(asset_class='MUTUAL_FUND', is_active=True)[:6])
-        all_instruments = indices + equities + mutual_funds
+        mutual_funds = list(Instrument.objects.filter(asset_class='MUTUAL_FUND', is_active=True)[:8])
+        cryptos = list(Instrument.objects.filter(asset_class='CRYPTO', is_active=True)[:10])
+        all_instruments = indices + equities + mutual_funds + cryptos
         resolved_map = PriceResolver.resolve_prices_bulk(all_instruments)
         movement_map = PriceMovementService.calculate_movements_bulk(resolved_map)
+
+        import json
 
         def format_inst(inst):
             resolved = resolved_map.get(inst.id)
             movement = movement_map.get(inst.id)
             available = bool(resolved and resolved.price is not None)
+
+            extra_meta = {}
+            if resolved and resolved.notes:
+                try:
+                    if isinstance(resolved.notes, str) and resolved.notes.strip().startswith('{'):
+                        extra_meta = json.loads(resolved.notes)
+                except Exception:
+                    pass
+
             return {
                 'id': str(inst.id), 'symbol': inst.symbol, 'name': inst.name,
                 'asset_class': inst.asset_class, 'exchange': inst.exchange,
@@ -172,6 +184,13 @@ class MarketDataService:
                 'data_version': resolved.data_version if resolved else None,
                 'currency': resolved.currency if resolved else inst.currency,
                 'unit': resolved.unit if resolved else None,
+                'market_cap': extra_meta.get('market_cap'),
+                'volume_24h': extra_meta.get('volume_24h'),
+                'fund_house': extra_meta.get('fund_house'),
+                'scheme_code': getattr(inst, 'scheme_code', None),
+                'isin': getattr(inst, 'isin', None),
+                'plan_type': extra_meta.get('plan_type'),
+                'option_type': extra_meta.get('option_type'),
             }
 
         def safe_format(inst):
@@ -191,6 +210,7 @@ class MarketDataService:
             'indices': [safe_format(i) for i in indices],
             'equities': [safe_format(i) for i in equities],
             'mutual_funds': [safe_format(i) for i in mutual_funds],
+            'cryptocurrencies': [safe_format(i) for i in cryptos],
             'is_demo_mode': getattr(settings, 'MARKET_DATA_PROVIDER_MODE', 'DEMO').upper() == 'DEMO',
             'demo_notice': 'DEMO DATA — Synthetic prices, not live market quotations.'
                 if getattr(settings, 'MARKET_DATA_PROVIDER_MODE', 'DEMO').upper() == 'DEMO' else '',

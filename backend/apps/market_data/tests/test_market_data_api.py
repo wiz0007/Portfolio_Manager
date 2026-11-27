@@ -227,12 +227,14 @@ class TestMarketDataAPI:
         prov_ppfas = provider_registry.get_provider_for_instrument(ppfas)
         assert prov_ppfas.provider_name in ['AMFI', 'DEMO']
 
-        # Provider list contains DEMO, AMFI, TRUEDATA
+        # Provider list contains DEMO, AMFI, TRUEDATA, COINGECKO, MFAPI
         providers = provider_registry.list_providers()
         names = [p['name'] for p in providers]
         assert 'DEMO' in names
         assert 'AMFI' in names
         assert 'TRUEDATA' in names
+        assert 'COINGECKO' in names
+        assert 'MFAPI' in names
 
     def test_mkt_004_provider_health_check_api(self, auth_client):
         client, _ = auth_client
@@ -271,5 +273,17 @@ class TestMarketDataAPI:
         assert 'indices' in data
         assert 'equities' in data
         assert 'mutual_funds' in data
+        assert 'cryptocurrencies' in data
         assert data['is_demo_mode'] is True
         assert 'DEMO DATA' in data['demo_notice']
+
+    def test_mutual_funds_search_endpoint(self, auth_client, sample_instruments):
+        client, _ = auth_client
+        response = client.get('/api/v1/instruments/mutual-funds/search/?q=Parag')
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) >= 1
+        assert response.data[0]['symbol'] == '122639'
+
+        response_filtered = client.get('/api/v1/instruments/mutual-funds/search/?plan_type=DIRECT')
+        assert response_filtered.status_code == status.HTTP_200_OK
+        assert any(item['symbol'] == '122639' for item in response_filtered.data)
