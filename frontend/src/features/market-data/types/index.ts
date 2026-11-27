@@ -22,7 +22,7 @@ export interface MarketQuote {
   id?: string;
   instrument_id?: string;
   symbol: string;
-  price: string;
+  price: string | null;
   open_price?: string | null;
   high_price?: string | null;
   low_price?: string | null;
@@ -96,9 +96,9 @@ export interface MarketOverviewItem {
   name: string;
   asset_class: string;
   exchange: string;
-  price: string;
-  change_amount: string;
-  change_percent: string;
+  price: string | null;
+  change_amount: string | null;
+  change_percent: string | null;
   is_synthetic: boolean;
   timestamp: string;
   market_cap?: string | null;

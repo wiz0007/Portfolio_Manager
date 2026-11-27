@@ -167,9 +167,11 @@ export const InstrumentSearch: React.FC<InstrumentSearchProps> = ({
                   {item.latest_quote && (
                     <div className="text-right shrink-0 pl-3">
                       <div className="font-semibold text-sm text-theme-text">
-                        ₹{parseFloat(item.latest_quote.price).toFixed(2)}
+                        {item.latest_quote.price != null && !isNaN(parseFloat(item.latest_quote.price))
+                          ? `₹${parseFloat(item.latest_quote.price).toFixed(2)}`
+                          : '—'}
                       </div>
-                      {item.latest_quote.change_percent && (
+                      {item.latest_quote.change_percent != null && !isNaN(parseFloat(item.latest_quote.change_percent)) && (
                         <div
                           className={`text-xs font-medium ${
                             parseFloat(item.latest_quote.change_percent) >= 0

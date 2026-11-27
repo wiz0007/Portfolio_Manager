@@ -8,38 +8,56 @@ IST = ZoneInfo('Asia/Kolkata')
 
 
 def parse_decimal_safe(val: Any) -> Optional[Decimal]:
-    if val is None:
+    if val is None or val == '':
         return None
     try:
-        return Decimal(str(val).strip())
+        d = Decimal(str(val).strip())
+        if d.is_nan() or d.is_infinite():
+            return None
+        return d
     except (InvalidOperation, ValueError, TypeError):
         return None
 
 
 def parse_mf_date_to_utc(date_str: str) -> datetime:
     """
-    Parses DD-MM-YYYY date string from MFAPI and returns UTC datetime corresponding to EOD (21:00 IST).
+    Parses DD-MM-YYYY date string from MFAPI and returns UTC datetime corresponding to NAV effective date.
+    Uses midnight UTC convention to represent the calendar valuation date without fabricating an artificial intraday publication timestamp.
     """
     clean = str(date_str).strip()
     d = datetime.strptime(clean, '%d-%m-%Y').date()
-    # 21:00 IST represents Indian Mutual Fund NAV publication time
-    dt_ist = datetime(d.year, d.month, d.day, 21, 0, tzinfo=IST)
-    return dt_ist.astimezone(timezone.utc)
+    # Reject future dates beyond today in IST
+    today_ist = datetime.now(IST).date()
+    if d > today_ist:
+        raise ValueError(f"Future NAV date rejected: {d} (today: {today_ist})")
+    return datetime(d.year, d.month, d.day, 0, 0, tzinfo=timezone.utc)
 
 
 def classify_scheme(scheme_name: str) -> Dict[str, str]:
     """
-    Determines plan type (DIRECT vs REGULAR) and option type (GROWTH vs IDCW).
+    Evidence-based determination of plan type (DIRECT, REGULAR, UNKNOWN)
+    and option type (GROWTH, IDCW, UNKNOWN).
+    Never silently defaults missing indicators to Regular or Growth.
     """
     name_upper = scheme_name.upper()
-    plan_type = 'DIRECT' if 'DIRECT' in name_upper else 'REGULAR'
 
+    # Plan classification
+    if 'DIRECT' in name_upper:
+        plan_type = 'DIRECT'
+    elif 'REGULAR' in name_upper:
+        plan_type = 'REGULAR'
+    else:
+        plan_type = 'UNKNOWN'
+
+    # Option classification
     if 'GROWTH' in name_upper:
         option_type = 'GROWTH'
-    elif 'IDCW' in name_upper or 'DIVIDEND' in name_upper or 'INCOME' in name_upper:
+    elif any(k in name_upper for k in ('IDCW', 'DIVIDEND', 'INCOME')):
         option_type = 'IDCW'
+    elif 'BONUS' in name_upper:
+        option_type = 'BONUS'
     else:
-        option_type = 'GROWTH'
+        option_type = 'UNKNOWN'
 
     return {
         'plan_type': plan_type,

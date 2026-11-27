@@ -173,12 +173,13 @@ class MarketDataService:
             return {
                 'id': str(inst.id), 'symbol': inst.symbol, 'name': inst.name,
                 'asset_class': inst.asset_class, 'exchange': inst.exchange,
-                'price': str(resolved.price) if available else 'N/A',
-                'change_amount': str(movement.change_amount) if movement and movement.change_amount is not None else '0.0000',
-                'change_percent': str(movement.change_percent) if movement and movement.change_percent is not None else '0.0000',
+                'price': str(resolved.price) if available else None,
+                'change_amount': str(movement.change_amount) if movement and movement.change_amount is not None else None,
+                'change_percent': str(movement.change_percent) if movement and movement.change_percent is not None else None,
                 'is_synthetic': bool(resolved and resolved.is_synthetic),
                 'timestamp': resolved.effective_at.isoformat() if resolved and resolved.effective_at else None,
                 'status': resolved.status if resolved else 'UNAVAILABLE',
+                'source': resolved.source if resolved else None,
                 'series_id': resolved.series_id if resolved else None,
                 'observation_id': resolved.observation_id if resolved else None,
                 'data_version': resolved.data_version if resolved else None,
@@ -201,7 +202,7 @@ class MarketDataService:
                 return {
                     'id': str(inst.id), 'symbol': inst.symbol, 'name': inst.name,
                     'asset_class': inst.asset_class, 'exchange': inst.exchange,
-                    'price': 'N/A', 'change_amount': '0.0000', 'change_percent': '0.0000',
+                    'price': None, 'change_amount': None, 'change_percent': None,
                     'is_synthetic': False, 'timestamp': None, 'status': 'UNAVAILABLE',
                 }
 
