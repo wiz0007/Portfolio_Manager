@@ -18,7 +18,7 @@ from apps.market_data.models.import_batch import ImportBatchStatus, PriceImportB
 from apps.market_data.models.instrument import Instrument, InstrumentStatus
 from apps.market_data.models.observation import ObservationStatus, PriceObservation, TrustClass
 from apps.market_data.models.series import MarketDataSeries
-from apps.market_data.services.history_service import MarketHistoryService
+from apps.market_data.services.history_service import MARKET_TZ, MarketHistoryService
 from apps.market_data.services.import_service import PriceImportService, clean_cell
 from apps.market_data.services.price_resolver import PriceResolver, ResolutionStatus
 from apps.portfolios.models import Portfolio
@@ -593,7 +593,7 @@ class TestHistoricalPriceServiceStabilization:
         assert res.supported is True
         assert len(res.points) == 2
         assert res.points[0].price == Decimal('500.00')
-        assert res.start_date == earliest_dt.date().isoformat()
+        assert res.start_date == earliest_dt.astimezone(MARKET_TZ).date().isoformat()
         assert res.points[0].price_type == 'LTP'
         assert res.points[0].published_at is not None
 
