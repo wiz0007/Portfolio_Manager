@@ -8,6 +8,11 @@ interface QuoteCardProps {
   name?: string;
   exchange?: string;
   quote?: MarketQuote | null;
+  marketCap?: string | null;
+  volume24h?: string | null;
+  fundHouse?: string | null;
+  planType?: string | null;
+  optionType?: string | null;
   isLoading?: boolean;
   onRefresh?: () => void;
   onSelect?: () => void;
@@ -19,20 +24,29 @@ export const QuoteCard: React.FC<QuoteCardProps> = ({
   name,
   exchange,
   quote,
+  marketCap,
+  volume24h,
+  fundHouse,
+  planType,
+  optionType,
   isLoading = false,
   onRefresh,
   onSelect,
   className = '',
 }) => {
-  const priceNum = quote?.price ? parseFloat(quote.price) : 0;
-  const changePct = quote?.change_percent ? parseFloat(quote.change_percent) : 0;
-  const isPositive = changePct >= 0;
+  const hasValidPrice = quote?.price != null && quote.price !== '' && !isNaN(parseFloat(quote.price));
+  const priceNum = hasValidPrice ? parseFloat(quote!.price!) : null;
+  const hasValidChange = quote?.change_percent != null && quote.change_percent !== '' && !isNaN(parseFloat(quote.change_percent));
+  const changePct = hasValidChange ? parseFloat(quote!.change_percent!) : null;
+  const isPositive = changePct !== null ? changePct >= 0 : true;
 
-  const formattedPrice = new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: quote?.currency || 'INR',
-    maximumFractionDigits: 2,
-  }).format(priceNum);
+  const formattedPrice = priceNum !== null
+    ? new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: quote?.currency || 'INR',
+        maximumFractionDigits: priceNum < 1 && priceNum > 0 ? 4 : 2,
+      }).format(priceNum)
+    : '—';
 
   return (
     <div
@@ -74,7 +88,7 @@ export const QuoteCard: React.FC<QuoteCardProps> = ({
           )}
         </div>
 
-        {quote && (
+        {hasValidChange && (
           <div
             className={`flex items-center text-xs font-semibold px-2 py-0.5 rounded-full ${
               isPositive
@@ -89,11 +103,42 @@ export const QuoteCard: React.FC<QuoteCardProps> = ({
             )}
             <span>
               {isPositive ? '+' : ''}
-              {changePct.toFixed(2)}%
+              {changePct!.toFixed(2)}%
             </span>
           </div>
         )}
       </div>
+
+      {/* Optional Metadata: Crypto or Mutual Funds */}
+      {(marketCap || volume24h || fundHouse || planType || optionType) && (
+        <div className="mt-2.5 flex flex-wrap gap-1.5 text-[10px]">
+          {marketCap && (
+            <span className="px-1.5 py-0.5 rounded bg-theme-bg-subtle text-theme-text-muted border border-theme-border/40">
+              MCap: {marketCap}
+            </span>
+          )}
+          {volume24h && (
+            <span className="px-1.5 py-0.5 rounded bg-theme-bg-subtle text-theme-text-muted border border-theme-border/40">
+              Vol: {volume24h}
+            </span>
+          )}
+          {fundHouse && (
+            <span className="px-1.5 py-0.5 rounded bg-theme-bg-subtle text-theme-text-muted border border-theme-border/40 truncate max-w-[140px]" title={fundHouse}>
+              {fundHouse}
+            </span>
+          )}
+          {planType && (
+            <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+              {planType}
+            </span>
+          )}
+          {optionType && (
+            <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">
+              {optionType}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Intraday Range / Details */}
       {quote && (quote.high_price || quote.volume) && (

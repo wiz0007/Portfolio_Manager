@@ -309,18 +309,27 @@ class MarketDataQuoteView(APIView):
             quote = MarketDataService.get_latest_quote(instrument, force_refresh=force_refresh)
             return Response(QuoteSerializer(quote).data)
 
-        # Bulk quote retrieval by symbol list
+        # Bulk quote retrieval by symbol list or instrument IDs
         symbols_str = request.query_params.get('symbols', '')
-        if not symbols_str:
+        ids_str = request.query_params.get('ids', '')
+        if not symbols_str and not ids_str:
             return Response({'detail': 'Missing symbols or instrument id.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        symbols = [s.strip().upper() for s in symbols_str.split(',') if s.strip()]
-        instruments = Instrument.objects.filter(symbol__in=symbols)
+        qs = Instrument.objects.filter(is_active=True)
+        if ids_str:
+            ids = [i.strip() for i in ids_str.split(',') if i.strip()]
+            instruments = list(qs.filter(id__in=ids))
+        else:
+            symbols = [s.strip().upper() for s in symbols_str.split(',') if s.strip()]
+            instruments = list(qs.filter(symbol__in=symbols))
 
         results = {}
         for inst in instruments:
             q = MarketDataService.get_latest_quote(inst)
-            results[inst.symbol] = QuoteSerializer(q).data
+            serialized = QuoteSerializer(q).data
+            results[str(inst.id)] = serialized
+            if inst.symbol not in results:
+                results[inst.symbol] = serialized
 
         return Response(results)
 

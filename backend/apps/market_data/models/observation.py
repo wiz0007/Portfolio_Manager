@@ -381,9 +381,10 @@ class PriceObservation(models.Model):
         active = getattr(publisher, 'is_active', True)
         authorized = bool(
             active and (
-                getattr(publisher, 'is_superuser', False)
+                getattr(publisher, 'is_system', False)
+                or getattr(publisher, 'is_superuser', False)
                 or getattr(publisher, 'is_staff', False)
-                or publisher.groups.filter(name='MarketDataPublisher').exists()
+                or (hasattr(publisher, 'groups') and publisher.groups.filter(name='MarketDataPublisher').exists())
             )
         )
         if not authorized:

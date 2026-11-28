@@ -64,6 +64,6 @@ Thumbs.db
 # Docker
 *.local
 
-# Documentation
-docs/
+# Documentation (personal reference)
+/docs/
 

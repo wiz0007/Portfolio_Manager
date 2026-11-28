@@ -96,6 +96,14 @@ class MFAPIClient:
             raise MFAPIError("Expected list response for scheme search")
         return res
 
+    def get_all_schemes(self) -> List[Dict[str, Any]]:
+        """Fetch complete scheme catalogue from /mf."""
+        req = self._build_request('mf')
+        res = self._execute(req)
+        if not isinstance(res, list):
+            raise MFAPIError("Expected list response for all schemes catalogue")
+        return res
+
     def get_scheme(self, scheme_code: str) -> Dict[str, Any]:
         """Fetch scheme metadata and all historical NAV entries."""
         code = str(scheme_code).strip()

@@ -59,6 +59,21 @@ const mockOverview: MarketOverviewData = {
       plan_type: 'DIRECT',
       option_type: 'GROWTH',
     },
+    {
+      id: 'mf-2',
+      symbol: '999999',
+      name: 'Pending Valuation Fund',
+      asset_class: 'MUTUAL_FUND',
+      exchange: 'AMFI',
+      price: null,
+      change_amount: null,
+      change_percent: null,
+      is_synthetic: false,
+      timestamp: '2026-11-26T15:30:00Z',
+      fund_house: 'Test AMC',
+      plan_type: 'REGULAR',
+      option_type: 'GROWTH',
+    },
   ],
   cryptocurrencies: [
     {
@@ -72,8 +87,8 @@ const mockOverview: MarketOverviewData = {
       change_percent: '1.43',
       is_synthetic: false,
       timestamp: '2026-11-26T12:00:00Z',
-      market_cap: '168000000000000',
-      volume_24h: '3500000000',
+      market_cap: '₹168.0T',
+      volume_24h: '₹3.5T',
     },
   ],
   is_demo_mode: false,
@@ -147,7 +162,7 @@ describe('MarketOverviewPage Crypto and Mutual Funds Integration', () => {
     });
   });
 
-  it('switches to Cryptocurrencies tab and displays crypto quote card', async () => {
+  it('switches to Cryptocurrencies tab and displays crypto quote card with metrics', async () => {
     renderComponent();
 
     await waitFor(() => {
@@ -160,10 +175,12 @@ describe('MarketOverviewPage Crypto and Mutual Funds Integration', () => {
     await waitFor(() => {
       expect(screen.getByText('Bitcoin')).toBeInTheDocument();
       expect(screen.getByText('BTC')).toBeInTheDocument();
+      expect(screen.getByText('MCap: ₹168.0T')).toBeInTheDocument();
+      expect(screen.getByText('Vol: ₹3.5T')).toBeInTheDocument();
     });
   });
 
-  it('switches to Mutual Funds tab and displays mutual fund quote card', async () => {
+  it('switches to Mutual Funds tab and displays mutual fund quote card and plan types', async () => {
     renderComponent();
 
     await waitFor(() => {
@@ -176,6 +193,24 @@ describe('MarketOverviewPage Crypto and Mutual Funds Integration', () => {
     await waitFor(() => {
       expect(screen.getByText(/Parag Parikh Flexi Cap Fund/i)).toBeInTheDocument();
       expect(screen.getByText('122639')).toBeInTheDocument();
+      expect(screen.getByText('DIRECT')).toBeInTheDocument();
+      expect(screen.getAllByText('GROWTH').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('handles null price safely by displaying em-dash without crashing or showing zero', async () => {
+    renderComponent();
+
+    await waitFor(() => {
+      expect(screen.getByText('Mutual Funds')).toBeInTheDocument();
+    });
+
+    const mfTab = screen.getByText('Mutual Funds');
+    fireEvent.click(mfTab);
+
+    await waitFor(() => {
+      expect(screen.getByText('Pending Valuation Fund')).toBeInTheDocument();
+      expect(screen.getByText('—')).toBeInTheDocument();
     });
   });
 });
