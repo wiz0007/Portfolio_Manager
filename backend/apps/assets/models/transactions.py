@@ -65,6 +65,15 @@ class InvestmentTransaction(models.Model):
     )
     currency = models.CharField(max_length=10, default='INR')
     notes = models.TextField(blank=True, default='')
+    reversal_of = models.OneToOneField(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='reversed_by',
+        help_text='Reference to original transaction if this transaction is a reversal',
+    )
+    reversal_reason = models.TextField(blank=True, default='')
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -101,6 +110,15 @@ class InvestmentTransaction(models.Model):
             errors['units'] = 'Units cannot be negative.'
         if self.price_per_unit is not None and self.price_per_unit < Decimal('0'):
             errors['price_per_unit'] = 'Price per unit cannot be negative.'
+        if self.reversal_of_id:
+            if self.reversal_of.reversal_of_id:
+                errors['reversal_of'] = 'Cannot reverse a transaction that is itself a reversal.'
+            if self.investment_id and self.reversal_of.investment_id != self.investment_id:
+                errors['reversal_of'] = 'Reversal investment must match original transaction investment.'
+            if self.user_id and self.reversal_of.user_id != self.user_id:
+                errors['reversal_of'] = 'Reversal owner must match original transaction owner.'
+            if self.portfolio_id and self.reversal_of.portfolio_id != self.portfolio_id:
+                errors['reversal_of'] = 'Reversal portfolio must match original transaction portfolio.'
         if errors:
             raise ValidationError(errors)
 
@@ -117,15 +135,19 @@ class InvestmentTransaction(models.Model):
         if self.amount is None:
             self.amount = self.gross_amount or Decimal('0')
         if self.net_cash_flow is None:
-            gross = self.gross_amount or Decimal('0')
-            f = self.fees or Decimal('0')
-            t = self.taxes or Decimal('0')
-            if self.transaction_type in ('BUY', 'INITIAL_PURCHASE', 'DEPOSIT'):
-                self.net_cash_flow = gross + f + t
-            elif self.transaction_type in ('SELL', 'WITHDRAWAL'):
-                self.net_cash_flow = gross - f - t
+            if self.transaction_type == 'REVERSAL' and self.reversal_of_id:
+                orig_net = self.reversal_of.net_cash_flow or self.reversal_of.amount or Decimal('0')
+                self.net_cash_flow = -orig_net
             else:
-                self.net_cash_flow = gross
+                gross = self.gross_amount or Decimal('0')
+                f = self.fees or Decimal('0')
+                t = self.taxes or Decimal('0')
+                if self.transaction_type in ('BUY', 'INITIAL_PURCHASE', 'DEPOSIT'):
+                    self.net_cash_flow = gross + f + t
+                elif self.transaction_type in ('SELL', 'WITHDRAWAL'):
+                    self.net_cash_flow = gross - f - t
+                else:
+                    self.net_cash_flow = gross
 
         FOUR_PLACES = Decimal('0.0001')
         for field in ('amount', 'gross_amount', 'net_cash_flow', 'fees', 'taxes', 'units', 'price_per_unit'):

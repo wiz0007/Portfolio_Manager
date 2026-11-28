@@ -66,6 +66,9 @@ MODEL_OWNERSHIP: Dict[str, Dict[str, str]] = {
     'watchlists': {
         'watchlistitem': PRIMARY_DATABASE,
     },
+    'analytics': {
+        'fxrate': PRIMARY_DATABASE,
+    },
     # Market Data App Models partitioned by ownership boundary
     'market_data': {
         # Primary canonical reference entities
