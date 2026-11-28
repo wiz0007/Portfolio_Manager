@@ -15,6 +15,8 @@ import { ValuationHistoryModal } from '../ValuationHistoryModal/ValuationHistory
 import { ManualValuationModal } from '../ManualValuationModal/ManualValuationModal';
 import { ProjectionCalculatorModal } from '../ProjectionCalculatorModal/ProjectionCalculatorModal';
 import { HoldingValuationCard } from '../HoldingValuationCard';
+import { useInvestmentPerformance } from '@/features/analytics/api/analyticsApi';
+import { TransactionTimelineView } from '@/features/analytics/components/TransactionTimelineView';
 import { Button } from '@/shared/ui/Button';
 
 export interface InvestmentDetailModalProps {
@@ -32,6 +34,7 @@ export const InvestmentDetailModal: React.FC<InvestmentDetailModalProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const { data: investment, isLoading, isError } = useInvestment(portfolioId, investmentId);
+  const { data: analyticsPerf } = useInvestmentPerformance(investmentId);
 
   const [showValuationHistory, setShowValuationHistory] = useState(false);
   const [showManualValuation, setShowManualValuation] = useState(false);
@@ -43,6 +46,7 @@ export const InvestmentDetailModal: React.FC<InvestmentDetailModalProps> = ({
       queryClient.invalidateQueries({ queryKey: ['investment', portfolioId, investmentId] });
       queryClient.invalidateQueries({ queryKey: ['investment-valuations', investmentId] });
       queryClient.invalidateQueries({ queryKey: ['investments'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
     },
   });
 
@@ -135,6 +139,48 @@ export const InvestmentDetailModal: React.FC<InvestmentDetailModalProps> = ({
             valuationMethodFallback={investment.valuation_method}
           />
 
+          {/* Canonical Analytics Reconciliation Banner */}
+          {analyticsPerf?.data_completeness?.reconciliation_status === 'DISCREPANCY' && (
+            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs space-y-1">
+              <div className="font-semibold flex items-center gap-1.5">
+                <span>⚠️ Ledger Reconciliation Advisory</span>
+              </div>
+              {analyticsPerf.data_completeness.reconciliation_notes?.map((note: string, idx: number) => (
+                <div key={idx} className="text-[11px] text-amber-300/90">{note}</div>
+              ))}
+            </div>
+          )}
+
+          {/* Canonical Return Metrics */}
+          {analyticsPerf && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-xl bg-theme-card/30 border border-theme-border text-xs">
+              <div>
+                <span className="text-theme-text-muted text-[11px]">Realized P&L</span>
+                <div className={`text-sm font-semibold mt-0.5 ${Number(analyticsPerf.realized_pnl) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {investment.currency} {Number(analyticsPerf.realized_pnl).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </div>
+              </div>
+              <div>
+                <span className="text-theme-text-muted text-[11px]">Unrealized P&L</span>
+                <div className={`text-sm font-semibold mt-0.5 ${Number(analyticsPerf.unrealized_pnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {analyticsPerf.unrealized_pnl !== null ? `${investment.currency} ${Number(analyticsPerf.unrealized_pnl).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : 'N/A'}
+                </div>
+              </div>
+              <div>
+                <span className="text-theme-text-muted text-[11px]">XIRR Return</span>
+                <div className="text-sm font-semibold text-theme-primary mt-0.5">
+                  {analyticsPerf.xirr_pct !== null ? `${analyticsPerf.xirr_pct}%` : analyticsPerf.xirr_status}
+                </div>
+              </div>
+              <div>
+                <span className="text-theme-text-muted text-[11px]">Cost Basis</span>
+                <div className="text-sm font-semibold text-theme-text mt-0.5">
+                  {investment.currency} {Number(analyticsPerf.current_cost_basis).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Valuation Engine & Projections Action Toolbar */}
           <div className="p-4 rounded-xl bg-theme-card/50 border border-theme-border space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -219,8 +265,13 @@ export const InvestmentDetailModal: React.FC<InvestmentDetailModalProps> = ({
             </div>
           )}
 
-          {/* Transactions ledger */}
-          {investment.transactions && investment.transactions.length > 0 && (
+          {/* Canonical Transaction Timeline */}
+          {analyticsPerf?.timeline && analyticsPerf.timeline.length > 0 && (
+            <TransactionTimelineView timeline={analyticsPerf.timeline} currency={investment.currency} />
+          )}
+
+          {/* Transactions ledger fallback if timeline not yet loaded */}
+          {(!analyticsPerf?.timeline || analyticsPerf.timeline.length === 0) && investment.transactions && investment.transactions.length > 0 && (
             <div>
               <h3 className="text-sm font-semibold uppercase tracking-wider text-theme-text-muted mb-3 flex items-center gap-2">
                 <History className="h-4 w-4 text-theme-primary" />

@@ -12,7 +12,7 @@ import { InvestmentCreatePage } from '@/features/investments/pages/InvestmentCre
 import { MarketOverviewPage } from '@/features/market-data/pages/MarketOverviewPage';
 import { ProfilePage } from '@/features/settings/pages/ProfilePage';
 import { AccountPage } from '@/features/settings/pages/AccountPage';
-import { AnalyticsPlaceholderPage } from '@/features/analytics/pages/AnalyticsPlaceholderPage';
+import { AnalyticsPage } from '@/features/analytics/pages/AnalyticsPage';
 import { WatchlistPage } from '@/features/watchlists/pages/WatchlistPage';
 import { InstrumentDetailPage } from '@/features/watchlists/pages/InstrumentDetailPage';
 import { ProtectedRoute } from './layouts/ProtectedRoute';
@@ -41,7 +41,7 @@ export const AppRouter: React.FC = () => {
           <Route path="/portfolios/:id/edit" element={<PortfolioEditPage />} />
           <Route path="/markets" element={<MarketOverviewPage />} />
           <Route path="/investments/new" element={<InvestmentCreatePage />} />
-          <Route path="/analytics" element={<AnalyticsPlaceholderPage />} />
+          <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/watchlist" element={<WatchlistPage />} />
           <Route path="/instruments/:id" element={<InstrumentDetailPage />} />
           <Route path="/watchlist/instruments/:id" element={<InstrumentDetailPage />} />

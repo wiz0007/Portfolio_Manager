@@ -78,6 +78,8 @@ class InvestmentTransactionSerializer(serializers.ModelSerializer):
             'net_cash_flow',
             'currency',
             'notes',
+            'reversal_of',
+            'reversal_reason',
             'created_at',
         ]
 
