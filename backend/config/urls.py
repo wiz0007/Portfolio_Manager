@@ -40,6 +40,9 @@ urlpatterns = [
     # Analytics & Performance API v1
     path('api/v1/analytics/', include('apps.analytics.api.v1.urls')),
 
+    # AI Insights & Explanations API v1
+    path('api/v1/ai/', include('apps.ai_insights.api.v1.urls')),
+
     # OpenAPI Documentation
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),

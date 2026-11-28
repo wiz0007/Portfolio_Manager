@@ -10,13 +10,15 @@ import { HistoricalPerformanceChart } from '../components/HistoricalPerformanceC
 import { BenchmarkComparisonChart } from '../components/BenchmarkComparisonChart';
 import { AllocationBreakdownCard } from '../components/AllocationBreakdownCard';
 import { Card } from '@/shared/ui/Card';
-import { Loader2, BarChart3 } from 'lucide-react';
+import { Loader2, BarChart3, Sparkles } from 'lucide-react';
+import { AiAssistantModal } from '@/features/ai-insights';
 
 export const AnalyticsPage: React.FC = () => {
   const { data: portfolios, isLoading: isPortfoliosLoading } = usePortfolios();
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>('');
   const [selectedRange, setSelectedRange] = useState<string>('1Y');
   const [selectedBenchmarkId, setSelectedBenchmarkId] = useState<string>('');
+  const [isAiModalOpen, setIsAiModalOpen] = useState<boolean>(false);
 
   // Auto-select first portfolio
   const activePortfolioId = selectedPortfolioId || (portfolios && portfolios.length > 0 ? portfolios[0].id : '');
@@ -128,8 +130,24 @@ export const AnalyticsPage: React.FC = () => {
               </button>
             ))}
           </div>
+
+          <button
+            onClick={() => setIsAiModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-purple-600 text-white hover:bg-purple-700 transition shadow-sm hover:shadow"
+            title="Ask AI to explain your performance and allocation"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            AI Insights
+          </button>
         </div>
       </div>
+
+      <AiAssistantModal
+        isOpen={isAiModalOpen}
+        onClose={() => setIsAiModalOpen(false)}
+        portfolioId={activePortfolioId}
+        portfolioName={portfolios.find((p) => p.id === activePortfolioId)?.name}
+      />
 
       {/* Primary KPI Metrics Summary */}
       {performance && (

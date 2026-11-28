@@ -251,5 +251,11 @@ MF_NAV_SYNC_ENABLED = os.getenv('MF_NAV_SYNC_ENABLED', 'True').lower() in ('true
 MF_NAV_SYNC_INTERVAL_HOURS = int(os.getenv('MF_NAV_SYNC_INTERVAL_HOURS', '24'))
 MF_NAV_DEFAULT_CURRENCY = os.getenv('MF_NAV_DEFAULT_CURRENCY', 'INR').upper()
 
+# OpenAI & AI Insights Configuration (Sprint 9)
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
+OPENAI_REQUEST_TIMEOUT = int(os.getenv('OPENAI_REQUEST_TIMEOUT', '30'))
+OPENAI_MAX_OUTPUT_TOKENS = int(os.getenv('OPENAI_MAX_OUTPUT_TOKENS', '1000'))
+
 
 
